@@ -50,6 +50,7 @@ there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
 | server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire :log log}`) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
+| both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:mailroom/errors` |
 | browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire` |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |

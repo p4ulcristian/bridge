@@ -32,6 +32,7 @@
      {:orders/of-shop […] :mailroom/notes {:orders/of-shop {:tables [\"orders\"]}}}"
   (:require
    [logbook.api :as logbook]
+   [mailroom.answers :as answers]
    [mailroom.steps :as steps]
    [mailroom.limits :as limits]
    [wire.api :as wire]))
@@ -67,11 +68,6 @@
       context
       (steps/add-answer-to-context context {:error "No step answered."}))))
 
-(defn- is-only-an-error?
-  "{:error \"…\"} and nothing else: a refusal, sent as it is."
-  [answer]
-  (and (map? answer) (= #{:error} (set (keys answer)))))
-
 (defn- note-each-context
   "The steps, each noting the context it returns in latest, so a failure is
    written to the log the steps had got to (one that knows who is asking)."
@@ -99,7 +95,7 @@
       {:answer {:errors errors}}
       (let [context (run-steps latest handler (make-context wire (:mailroom/log @latest) request message-name shaped-data))
             answer  (:mailroom/answer context)]
-        {:answer (if (is-only-an-error? answer) answer (turn-answer-into-json-data wire handler answer))
+        {:answer (if (answers/is-refusal? answer) answer (turn-answer-into-json-data wire handler answer))
          :notes  (:mailroom/notes context)}))))
 
 (def ^:private went-wrong {:error "Something went wrong."})

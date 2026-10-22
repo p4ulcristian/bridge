@@ -62,6 +62,7 @@
    written by."
   (:require
    [logbook.api :as logbook]
+   [mailroom.answers :as answers]
    [mailroom.http :as http]
    [mailroom.limits :as limits]
    [mailroom.messages :as messages]
@@ -184,6 +185,19 @@
   (settings/check-rate-limits-outside-a-server rate-limits)
   (settings/check-answer-options options)
   (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits request message))
+
+;; -----------------------------------------------------------------------------
+;; Answers
+
+(defn is-error-answer?
+  "Whether an answer is one of mailroom's error answers rather than data,
+   the same on both sides: {:error …} alone (a refusal: a step's, \"Not
+   found.\", or mailroom's own, \"Too many requests.\", \"Something went
+   wrong.\"), {:errors …} alone (params that didn't fit their shape), or
+   one carrying :mailroom/errors (in the browser, an answer that didn't fit
+   its shape). Anything else is data."
+  [answer]
+  (answers/is-error-answer? answer))
 
 ;; -----------------------------------------------------------------------------
 ;; Routes

@@ -244,3 +244,14 @@
       (is (= 413 (first (post-json (:port server) "{\"greetings/hello\":{\"name\":\"Anna\"}}"))))
       (is (= 200 (first (post-json (:port server) "{\"x/y\":{}}"))) "within it, answered")
       (finally (mailroom/stop-server! server)))))
+
+(deftest the-server-s-error-answers-are-told-from-data
+  (let [answer (mailroom/answer-message handlers :no-rate-limits {}
+                                        {:greetings/hello {:name "Anna"}
+                                         :greetings/fail  {}
+                                         :shops/total     {:shop/id "seven"}
+                                         :nobody/home     {}}
+                                        {:wire wire :log log})]
+    (is (= {:greetings/hello false :greetings/fail true :shops/total true :nobody/home true}
+           (update-vals answer mailroom/is-error-answer?))
+        "a refusal, params that didn't fit, an unknown name: errors; the greeting: data")))

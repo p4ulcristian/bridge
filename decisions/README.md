@@ -16,7 +16,7 @@ All but the last five were made while mailroom was three libraries inside Ground
 - [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md), changed in part by "The server puts the browser's settings in the page" (Groundwork's), [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) and [The app passes its log](2026-10-22-the-app-passes-its-log.md)
 - [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
-- [Answers are checked, errors stay in the log, and a handler may run its steps inside something](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md), changed in part by [An answer may carry notes](2026-10-22-an-answer-may-carry-notes.md)
+- [Answers are checked, errors stay in the log, and a handler may run its steps inside something](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md), changed in part by [An answer may carry notes](2026-10-22-an-answer-may-carry-notes.md), added to by [An error answer is told from data by one function](2026-10-23-an-error-answer-is-told-by-one-function.md)
 - [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md), changed in part by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
@@ -24,6 +24,7 @@ All but the last five were made while mailroom was three libraries inside Ground
 - [An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed](2026-10-22-sse-reopens-after-an-http-error.md)
 - [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md)
 - [The app passes its log; each message gets one that knows its request](2026-10-22-the-app-passes-its-log.md)
+- [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md)
 
 ## Replaced
 

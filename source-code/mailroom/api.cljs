@@ -29,6 +29,7 @@
    Every function that sends or reads a message takes the app's wire under
    :wire; a ws line keeps it for send-message-on-ws-line!."
   (:require
+   [mailroom.answers :as answers]
    [mailroom.http :as http]
    [mailroom.routes :as routes]
    [mailroom.sse :as sse]
@@ -43,6 +44,16 @@
    option refuses, :mailroom/bad-options."
   [address shapes-by-name message options]
   (http/send-message! address shapes-by-name message options))
+
+(defn is-error-answer?
+  "Whether an answer is one of mailroom's error answers rather than data,
+   the same on both sides: {:error …} alone (a refusal: the server's
+   \"Not found.\", \"Too many requests.\", \"Something went wrong.\"),
+   {:errors …} alone (params that didn't fit their shape), or one carrying
+   :mailroom/errors (an answer that didn't fit its shape, or a name the
+   shapes don't have, with the data as it came). Anything else is data."
+  [answer]
+  (answers/is-error-answer? answer))
 
 (defn open-sse-line!
   "sse: opens the stream; each named message, shaped by its :answer-shape,

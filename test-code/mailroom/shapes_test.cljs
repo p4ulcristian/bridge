@@ -74,3 +74,14 @@
     (let [problems (find-problems call)]
       (is (= :mailroom/bad-options (:type problems)) (str what ": refused before anything is sent or opened"))
       (is (contains? (:errors problems) :wire) (str what ": mailroom makes no wire")))))
+
+(deftest an-error-answer-is-told-from-data
+  (testing "mailroom's error answers"
+    (doseq [answer [{:error "Not found."}
+                    {:errors {:shop/id ["should be an id"]}}
+                    {:mailroom/errors ["No shapes named :nobody/home"] :data {:a 1}}
+                    (:shops/total (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:shop/id "seven" :total "1"}}))]]
+      (is (true? (mailroom.api/is-error-answer? answer)) (pr-str answer))))
+  (testing "data, even data with an :error key beside others"
+    (doseq [answer [{:error "x" :order/id 1} {:errors [] :total 2} [] nil "Not found." 7 {}]]
+      (is (false? (mailroom.api/is-error-answer? answer)) (pr-str answer)))))

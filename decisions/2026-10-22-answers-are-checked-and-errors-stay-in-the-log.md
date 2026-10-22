@@ -1,5 +1,7 @@
 # Answers are checked, errors stay in the log, and a handler may run its steps inside something
 
+> **Added to** by [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md) (2026-10-23, v0.4.0): `is-error-answer?`, on both sides.
+
 > Builds on Groundwork's decision "Every endpoint declares its answer" and [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md).
 
 **Decision:**
