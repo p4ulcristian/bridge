@@ -12,7 +12,7 @@ its shape allows; a rate limit per asker; and the pages in the address bar,
 by name, on both sides.
 
 ```clojure
-io.github.p4ulcristian/mailroom {:git/tag "v0.3.0" :git/sha "81ef0ab"}
+io.github.p4ulcristian/mailroom {:git/tag "v0.4.0" :git/sha "9333bc7"}
 ```
 
 Needs http-kit, reitit (reitit-ring on the server, reitit-frontend in the
