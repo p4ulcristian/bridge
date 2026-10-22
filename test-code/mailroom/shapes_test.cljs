@@ -75,6 +75,28 @@
       (is (= :mailroom/bad-options (:type problems)) (str what ": refused before anything is sent or opened"))
       (is (contains? (:errors problems) :wire) (str what ": mailroom makes no wire")))))
 
+(deftest more-headers-go-with-a-message
+  (testing ":headers is written out, {} for none; accept and content-type are mailroom's"
+    (is (contains? (:errors (find-problems #(mailroom.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire})))
+                   :headers))
+    (is (= :mailroom/bad-options
+           (:type (find-problems #(mailroom.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
+                                                              {:wire wire :headers {"content-type" "text/plain"}})))))
+    (is (= :mailroom/bad-options
+           (:type (find-problems #(mailroom.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
+                                                              {:wire wire :headers {"Idempotency-Key" "k"}}))))
+        "names in lowercase"))
+  (testing "they go out beside mailroom's own"
+    (let [sent  (atom nil)
+          fetch (.-fetch js/globalThis)]
+      (set! (.-fetch js/globalThis) (fn [address options]
+                                      (reset! sent [address (js->clj (.-headers options))])
+                                      (js/Promise.resolve #js {:text (fn [] (js/Promise.resolve "{\"greetings/hello\":1}"))})))
+      (try
+        (mailroom.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire :headers {"idempotency-key" "k-1"}})
+        (is (= ["/mail/http" {"idempotency-key" "k-1" "accept" "application/json" "content-type" "application/json"}] @sent))
+        (finally (set! (.-fetch js/globalThis) fetch))))))
+
 (deftest an-error-answer-is-told-from-data
   (testing "mailroom's error answers"
     (doseq [answer [{:error "Not found."}

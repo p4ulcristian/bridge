@@ -18,7 +18,7 @@
                                                   :exact-decimals   wire.big/big}))
 
      (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}}
-                             {:wire wire})                                        ; a promise of the shaped answer
+                             {:wire wire :headers {}})                            ; a promise of the shaped answer
      (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
                               {:wire wire :on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
      (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
@@ -40,8 +40,10 @@
    answer keyed by the same names, each shaped by its :answer-shape, and
    :mailroom/notes beside them when the server sent notes. A name the
    shapes don't have throws (:mailroom/no-shapes); nothing is sent.
-   Options, every key required: :wire, the app's wire. A missing or bad
-   option refuses, :mailroom/bad-options."
+   Options, every key required: :wire, the app's wire; :headers, more
+   request headers by lowercase name, {} for none (accept and
+   content-type are mailroom's own). A missing or bad option refuses,
+   :mailroom/bad-options."
   [address shapes-by-name message options]
   (http/send-message! address shapes-by-name message options))
 

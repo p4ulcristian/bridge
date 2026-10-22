@@ -180,11 +180,28 @@
                      [:params-shape :any]
                      [:answer-shape :any]]])
 
+(def ^:private headers-mailroom-sets
+  "The request headers send-message! writes itself: what the body is and
+   what the answer must be."
+  #{"accept" "content-type"})
+
+(defn- leaves-mailroom-headers-alone? [headers]
+  (not-any? headers-mailroom-sets (keys headers)))
+
+(defn- has-lowercase-names? [headers]
+  (every? #(= % (.toLowerCase ^String %)) (keys headers)))
+
 (def send-options-shape
   "send-message!'s options, every key required. :wire: the app's wire,
-   made from the browser's settings."
+   made from the browser's settings. :headers: more request headers, by
+   lowercase name, {} for none (a write's one-time key, say); accept and
+   content-type are mailroom's own and refused."
   [:map {:closed true}
-   wire-entry])
+   wire-entry
+   [:headers [:and
+              [:map-of :string :string]
+              [:fn {:error/message "header names are written in lowercase"} has-lowercase-names?]
+              [:fn {:error/message "accept and content-type are mailroom's own"} leaves-mailroom-headers-alone?]]]])
 
 (def sse-options-shape
   "open-sse-line!'s options, every key required. :wire: the app's wire.

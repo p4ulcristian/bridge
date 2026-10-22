@@ -1,3 +1,5 @@
+> **Changed in part** by [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md) (2026-10-23, v0.5.0): `send-message!`'s options gain `:headers`, `{}` for none.
+
 # Every value that sets behaviour is a setting; no hidden defaults
 
 > **Changed in part** by [The app passes its log](2026-10-22-the-app-passes-its-log.md) (2026-10-22, v0.3.0): a handler's failure and http-kit's errors and warnings go to the app's log, `:log`, not to `System.Logger` `mailroom`; `start-server!` takes an options map, `{:log log}`.

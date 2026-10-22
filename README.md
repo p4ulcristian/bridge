@@ -51,7 +51,7 @@ there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
 | both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:mailroom/errors` |
-| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire` |
+| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside mailroom's own (`{}` for none) |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |
 
@@ -145,7 +145,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                     :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
    :chat/said      {:params-shape nil :answer-shape nil}})
 
-(-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire})
+(-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire :headers {}})
     (.then (fn [{:orders/keys [of-shop]}] …)))
 
 (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
