@@ -7,22 +7,26 @@
    (java.util.concurrent ExecutorService Executors TimeUnit)))
 
 (defn start-server!
-  "Starts http-kit; {:ip \"0.0.0.0\" :port 8080}, port 0 picks a free one.
-   Returns {:port the-port …}."
-  [ring-handler {:keys [ip port]}]
+  "Starts http-kit at the settings' :ip and :port, port 0 picks a free one;
+   the server keeps :stop-wait-ms for stop-server!. Returns {:port the-port …}."
+  [ring-handler {:keys [ip port stop-wait-ms]}]
   (let [workers (Executors/newVirtualThreadPerTaskExecutor)
         server  (http-kit/run-server ring-handler {:ip                   ip
                                                    :port                 port
                                                    :worker-pool          workers
                                                    :legacy-return-value? false})]
-    {:port                    (http-kit/server-port server)
-     :mailroom/http-kit server
-     :mailroom/workers  workers}))
+    {:port                  (http-kit/server-port server)
+     :mailroom/http-kit     server
+     :mailroom/workers      workers
+     :mailroom/stop-wait-ms stop-wait-ms}))
 
 (defn stop-server!
-  "Stops taking requests, lets running ones finish (up to 10 s), then stops."
-  [server]
-  (deref (http-kit/server-stop! (:mailroom/http-kit server) {:timeout 10000}) 11000 nil)
+  "Stops taking requests, lets running ones finish (up to the settings'
+   :stop-wait-ms), then stops."
+  [{:mailroom/keys [stop-wait-ms] :as server}]
+  ;; the deref waits a second past http-kit's own timeout, so a stop that
+  ;; hangs can't hold the caller for ever
+  (deref (http-kit/server-stop! (:mailroom/http-kit server) {:timeout stop-wait-ms}) (+ stop-wait-ms 1000) nil)
   (let [^ExecutorService workers (:mailroom/workers server)]
     (.shutdown workers)
     (.awaitTermination workers 1 TimeUnit/SECONDS)))

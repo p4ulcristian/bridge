@@ -20,10 +20,12 @@
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :client-address-header nil
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000})
+   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private options
-  {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))})
+  {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+   :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (def ^:private handlers
   {:greetings/hello {:steps [say-hello]}
@@ -66,7 +68,7 @@
         (is (= [200 "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"120.50\"}}"]
                (post-json port "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\"}}"))))
       (testing "params that don't fit the shape: errors by key, no step runs"
-        (is (= [200 "{\"shops/total\":{\"errors\":{\"shop/id\":[\"should be a uuid\"]}}}"]
+        (is (= [200 "{\"shops/total\":{\"errors\":{\"shop/id\":[\"should be an id\"]}}}"]
                (post-json port "{\"shops/total\":{\"shop/id\":\"seven\"}}"))))
       (testing "not a JSON object: 400"
         (is (= 400 (first (post-json port "[1,2]"))))))))
@@ -121,7 +123,7 @@
         limited      {:greetings/hello {:rate-limit {:max 1 :per-ms 60000} :steps [say-hello]}}
         http-handler (find-handler (mailroom/make-routes-for-messages
                                     limited behind-proxy
-                                    {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header behind-proxy))})
+                                    (assoc options :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header behind-proxy))))
                                    0 :post)
         ask          (fn [asker]
                        (:body (http-handler {:remote-addr "10.0.0.1"

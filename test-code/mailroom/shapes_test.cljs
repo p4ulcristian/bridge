@@ -37,3 +37,9 @@
   (let [heard (atom [])]
     (messages/hand-named-messages! {:sync/changed #(swap! heard conj %)} {:sync/changed {:table "orders"}})
     (is (= [{:table "orders"}] @heard))))
+
+(deftest a-ws-line-is-told-when-to-reopen
+  (let [problems (try (mailroom.api/open-ws-line! "/mail/ws" shapes-by-name {} {})
+                      (catch :default e (ex-data e)))]
+    (is (= :mailroom/bad-options (:type problems)) "no :reopen-after-ms: refused before any socket opens")
+    (is (contains? (:errors problems) :reopen-after-ms))))

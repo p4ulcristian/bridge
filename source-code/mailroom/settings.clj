@@ -13,7 +13,15 @@
    server faces browsers itself.
    :addresses: where the three pipes are, {:http … :sse … :ws …}.
    :ping-every-ms: how often an idle sse line gets a comment and a ws line
-   {:mailroom/ping {}}, so proxies don't cut them."
+   {:mailroom/ping {}}, so proxies don't cut them.
+   :stop-wait-ms: how long stop-server! lets running requests finish before
+   it cuts them (a slow report needs longer).
+   :ws-reopen-after-ms: how long the browser waits before it reopens a
+   broken ws line; the server doesn't read it, the app hands it to the
+   browser with the addresses (open-ws-line!'s :reopen-after-ms).
+   :rate-limit-buckets-before-cleanup: rate limits keep a bucket per message
+   name and asker in memory; above this many, each message first drops the
+   buckets that have refilled full."
   [:map {:closed true}
    [:ip :string]
    [:port :int]
@@ -22,18 +30,22 @@
                 [:http :string]
                 [:sse :string]
                 [:ws :string]]]
-   [:ping-every-ms [:int {:min 1}]]])
+   [:ping-every-ms [:int {:min 1}]]
+   [:stop-wait-ms [:int {:min 0}]]
+   [:ws-reopen-after-ms [:int {:min 1}]]
+   [:rate-limit-buckets-before-cleanup [:int {:min 1}]]])
 
 (def routes-options-shape
-  "make-routes-for-messages's options. :find-rate-limit-key is required:
-   (fn [request]) telling askers apart for the handlers' :rate-limit. The
-   four hooks are each (fn [line]); one left out means nothing runs then."
+  "make-routes-for-messages's options, every key required.
+   :find-rate-limit-key: (fn [request]) telling askers apart for the
+   handlers' :rate-limit. The four hooks: each (fn [line]), or nil written
+   out when nothing runs then."
   [:map {:closed true}
    [:find-rate-limit-key fn?]
-   [:on-sse-open {:optional true} fn?]
-   [:on-sse-close {:optional true} fn?]
-   [:on-ws-open {:optional true} fn?]
-   [:on-ws-close {:optional true} fn?]])
+   [:on-sse-open [:maybe fn?]]
+   [:on-sse-close [:maybe fn?]]
+   [:on-ws-open [:maybe fn?]]
+   [:on-ws-close [:maybe fn?]]])
 
 (def ring-handler-options-shape
   "make-ring-handler-from-routes's options. :files-folder: the folder on

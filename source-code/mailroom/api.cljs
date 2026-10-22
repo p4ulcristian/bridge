@@ -4,15 +4,17 @@
    over http, sse and ws, and the pages in the address bar. The server's
    side is this namespace's .clj half.
 
-   The addresses and the pages come from the server (the app puts them in
-   the page); the browser uses the same shapes as the server's handlers, by
+   The addresses, the ws reopen delay and the pages come from the server
+   (the app puts them in the page); the browser uses the same shapes as the server's handlers, by
    name, from a .cljc file of the app's:
 
      (def shapes-by-name {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
                                            :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}})
 
      (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}})   ; a promise of the shaped answer
-     (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change})"
+     (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change})
+     (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
+                             {:reopen-after-ms ws-reopen-after-ms})              ; the server's setting, from the page"
   (:require
    [mailroom.http :as http]
    [mailroom.routes :as routes]
@@ -41,10 +43,13 @@
 
 (defn open-ws-line!
   "ws: opens the websocket; each named message, answers included, shaped by
-   its :answer-shape, goes to its handler by name. It reopens a second after
-   a break."
-  [address shapes-by-name handlers]
-  (ws/open-ws-line! address shapes-by-name handlers))
+   its :answer-shape, goes to its handler by name. Options, every key
+   required: :reopen-after-ms, how long it waits before it reopens after a
+   break (the server's :ws-reopen-after-ms setting, which the app puts in
+   the page with the addresses). A missing or bad option refuses,
+   :mailroom/bad-options."
+  [address shapes-by-name handlers options]
+  (ws/open-ws-line! address shapes-by-name handlers options))
 
 (defn send-message-on-ws-line!
   "ws: sends a named message on the line, its data by :params-shape.

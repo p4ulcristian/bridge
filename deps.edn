@@ -10,7 +10,7 @@
   metosin/reitit-ring               {:mvn/version "0.11.0"}
   metosin/reitit-frontend           {:mvn/version "0.11.0"}
   ;; wire: data that crosses an edge comes back as what it was; it brings malli
-  io.github.p4ulcristian/wire       {:git/tag "v0.1.2" :git/sha "1e8e9aa"}}
+  io.github.p4ulcristian/wire       {:git/tag "v0.1.3" :git/sha "0d446b3"}}
 
  :aliases
  {;; the JVM tests:  clojure -X:test

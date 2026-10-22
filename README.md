@@ -33,11 +33,12 @@ the server, a `.cljs` for the browser.
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
 | browser | `send-message!` | http: a promise of the answer, shaped |
-| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break |
+| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break (ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |
 
-Nothing has a default: every setting is written out, and the asker key is
-given; a missing one refuses, named, with every other problem at once.
+Nothing has a default: every setting is written out, and so are the asker
+key and the four hooks (nil where nothing runs); a missing one refuses,
+named, with every other problem at once.
 
 ```clojure
 (require '[mailroom.api :as mailroom])
@@ -46,7 +47,10 @@ given; a missing one refuses, named, with every other problem at once.
   {:ip "0.0.0.0" :port 8080
    :client-address-header "x-forwarded-for"            ; nil when no proxy is in front
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000})                              ; so proxies don't cut idle lines
+   :ping-every-ms 25000                                ; so proxies don't cut idle lines
+   :stop-wait-ms 10000                                 ; a stop lets running requests finish this long
+   :ws-reopen-after-ms 1000                            ; the browser reopens a broken ws line after this
+   :rate-limit-buckets-before-cleanup 10000})          ; above this many buckets, the full ones are dropped
 
 (def find-orders-of-shop
   {:name  :find-orders-of-shop
@@ -70,14 +74,20 @@ given; a missing one refuses, named, with every other problem at once.
            handlers settings
            {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
-            :on-sse-close        forget-line!})
+            :on-sse-close        forget-line!
+            :on-ws-open          nil
+            :on-ws-close         nil})
           (mailroom/make-server-routes-for-pages pages page-handler))
     {:files-folder "target/public"})
    settings))
 
-;; the browser, with the same shapes from a .cljc file
+;; the browser, with the same shapes from a .cljc file; the addresses and
+;; :ws-reopen-after-ms come from the server, in the page
 (-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}})
     (.then (fn [{:orders/keys [of-shop]}] …)))
+
+(mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
+                        {:reopen-after-ms ws-reopen-after-ms})
 ```
 
 ## Tests

@@ -8,14 +8,16 @@
    address find-client-address reads).
    A token bucket per message name and asker: it holds :max, refills at
    :max per :per-ms, and a message takes one. Kept in this server's memory,
-   so behind several servers each counts its own."
+   so behind several servers each counts its own; above the settings'
+   :rate-limit-buckets-before-cleanup buckets, the full ones are dropped."
   (:import
    (java.util.concurrent ConcurrentHashMap)))
 
 (defn make-limiter
-  "A limiter that tells askers apart by (find-key request)."
-  [find-key]
-  {:find-key find-key :buckets (ConcurrentHashMap.)})
+  "A limiter that tells askers apart by (find-key request) and keeps up to
+   buckets-before-cleanup buckets before it drops the full ones."
+  [find-key buckets-before-cleanup]
+  {:find-key find-key :buckets-before-cleanup buckets-before-cleanup :buckets (ConcurrentHashMap.)})
 
 (defn- take-token [{:keys [tokens at]} now {:keys [max per-ms]}]
   (let [refilled (min max (+ tokens (* (- now at) (/ max per-ms))))]
@@ -25,18 +27,18 @@
 
 (defn- forget-full-buckets!
   "Buckets that have refilled hold nothing worth keeping."
-  [^ConcurrentHashMap buckets now]
-  (when (> (.size buckets) 10000)
+  [^ConcurrentHashMap buckets buckets-before-cleanup now]
+  (when (> (.size buckets) buckets-before-cleanup)
     (doseq [[k bucket] (into {} buckets)
             :when (> (- now (:at bucket)) (:per-ms bucket))]
       (.remove buckets k))))
 
 (defn is-message-allowed?
   "Whether this asker may send this message now; takes one from its bucket."
-  [{:keys [find-key ^ConcurrentHashMap buckets]} request message-name {:keys [max] :as rate-limit}]
+  [{:keys [find-key buckets-before-cleanup ^ConcurrentHashMap buckets]} request message-name {:keys [max] :as rate-limit}]
   (let [now (System/currentTimeMillis)
         k   [message-name (find-key request)]]
-    (forget-full-buckets! buckets now)
+    (forget-full-buckets! buckets buckets-before-cleanup now)
     (:allowed? (.compute buckets k (reify java.util.function.BiFunction
                                      (apply [_ _ bucket]
                                        (assoc (take-token (or bucket {:tokens max :at now}) now rate-limit)

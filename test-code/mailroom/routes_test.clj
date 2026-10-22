@@ -12,7 +12,8 @@
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :client-address-header nil
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000})
+   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private pages
   {:orders/page {:address "/orders/:order-id" :title "Order"}})
@@ -30,7 +31,9 @@
 (deftest an-address-leads-to-its-pipe-or-its-page
   (let [server (mailroom/start-server!
                 (mailroom/make-ring-handler-from-routes
-                 (into (mailroom/make-routes-for-messages handlers settings {:find-rate-limit-key #(mailroom/find-client-address % nil)})
+                 (into (mailroom/make-routes-for-messages handlers settings {:find-rate-limit-key #(mailroom/find-client-address % nil)
+                                                                                       :on-sse-open nil :on-sse-close nil
+                                                                                       :on-ws-open nil :on-ws-close nil})
                        (mailroom/make-server-routes-for-pages pages page-handler))
                  {:files-folder nil})
                 settings)

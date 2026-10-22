@@ -1,5 +1,7 @@
 # mailroom is its own library
 
+> **Changed in part** by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) (2026-10-22, v0.1.1): the four hooks are required, nil written out where nothing runs; the stop wait, the ws reopen delay and the rate-limit cleanup threshold are settings, not constants.
+
 > Changes in part [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md), [web has http, sse and ws](2026-10-22-web-has-http-sse-and-ws.md), [web becomes transport and routes](2026-10-22-transport-and-routes.md), [An answer may carry notes](2026-10-22-an-answer-may-carry-notes.md) and [Steps are a list over one context](2026-10-22-steps-are-a-list-over-one-context.md): their names, their keys, and every default they had.
 
 **Decision:** mailroom is a library of its own, in its own public repository, under the MIT license; an app or a framework takes it from git by tag. It was three of Groundwork's libraries: the server's transport (`groundwork.server.transport`), the browser's (`groundwork.browser.transport`) and steps (`groundwork.server.steps`). Now it is the namespace `mailroom`:

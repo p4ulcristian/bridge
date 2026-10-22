@@ -16,13 +16,15 @@
 
      (def settings {:ip \"0.0.0.0\" :port 8080 :client-address-header nil
                     :addresses {:http \"/mail/http\" :sse \"/mail/sse\" :ws \"/mail/ws\"}
-                    :ping-every-ms 25000})
+                    :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+                    :rate-limit-buckets-before-cleanup 10000})
 
      (mailroom/start-server!
       (mailroom/make-ring-handler-from-routes
        (mailroom/make-routes-for-messages
         handlers settings
-        {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))})
+        {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+         :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
        {:files-folder nil})
       settings)
 
@@ -45,12 +47,17 @@
 
 (def settings-shape
   "The settings, every key required, as a malli shape:
-   {:ip :port :client-address-header :addresses {:http :sse :ws} :ping-every-ms}.
+   {:ip :port :client-address-header :addresses {:http :sse :ws} :ping-every-ms
+    :stop-wait-ms :ws-reopen-after-ms :rate-limit-buckets-before-cleanup}.
    :client-address-header: behind a proxy, the header it puts the asker's
    address in (\"cf-connecting-ip\", \"x-forwarded-for\"); nil when the
    server faces browsers itself. :ping-every-ms: how often an idle sse line
    gets a comment and a ws line {:mailroom/ping {}}, so proxies don't cut
-   them."
+   them. :stop-wait-ms: how long stop-server! lets running requests finish.
+   :ws-reopen-after-ms: how long the browser waits before it reopens a
+   broken ws line; the app hands it to the browser with the addresses.
+   :rate-limit-buckets-before-cleanup: above this many rate-limit buckets
+   (one per message name and asker) in memory, the full ones are dropped."
   settings/settings-shape)
 
 (defn find-client-address
@@ -65,14 +72,14 @@
    (fn [request]) telling askers apart for the handlers' :rate-limit
    ({:max 10 :per-ms 60000}; over it, \"Too many requests.\"), such as
    find-client-address with the settings' :client-address-header; and
-   :on-sse-open, :on-sse-close, :on-ws-open, :on-ws-close, each
-   (fn [line]), each left out when nothing runs then. The settings and the
-   options are checked first: every problem at once."
+   :on-sse-open, :on-sse-close, :on-ws-open, :on-ws-close, each required,
+   (fn [line]) or nil when nothing runs then. The settings and the options
+   are checked first: every problem at once."
   [handlers settings options]
   (settings/check-settings settings)
   (settings/check-routes-options options)
-  (let [{:keys [addresses ping-every-ms]} settings
-        limiter                           (limits/make-limiter (:find-rate-limit-key options))]
+  (let [{:keys [addresses ping-every-ms rate-limit-buckets-before-cleanup]} settings
+        limiter (limits/make-limiter (:find-rate-limit-key options) rate-limit-buckets-before-cleanup)]
     [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers limiter)}}]
      [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse ping-every-ms options)}}]
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
@@ -86,7 +93,8 @@
   (server/start-server! ring-handler (settings/check-settings settings)))
 
 (defn stop-server!
-  "Stops taking requests, lets running ones finish (up to 10 s), then stops."
+  "Stops taking requests, lets running ones finish (up to the settings'
+   :stop-wait-ms), then stops."
   [server]
   (server/stop-server! server))
 
