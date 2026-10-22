@@ -33,7 +33,7 @@ the server, a `.cljs` for the browser.
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
 | browser | `send-message!` | http: a promise of the answer, shaped |
-| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break (sse: after the server's `retry:`; ws: after `:reopen-after-ms`, given) |
+| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |
 
 Nothing has a default: every value that sets behaviour is written out,
@@ -55,7 +55,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    :max-ws-message-bytes 4194304                       ; the largest message a browser sends on ws
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000                                ; so proxies don't cut idle lines
-   :sse-reconnect-after-ms 3000                        ; sent on the sse line (retry:), the browser waits this
+   :sse-reconnect-after-ms 3000                        ; the browser reopens a broken sse line after this (sent as retry:)
    :ws-reopen-after-ms 1000                            ; the browser reopens a broken ws line after this
    :stop-wait-ms 10000                                 ; a stop lets running requests finish this long
    :stop-wait-after-cut-ms 1000                        ; then waits this long for the cut ones to end
@@ -97,8 +97,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    settings))
 
 ;; the browser, with the same shapes from a .cljc file, both written out for
-;; every name it sends or gets; the addresses and :ws-reopen-after-ms come
-;; from the server, in the page
+;; every name it sends or gets; the addresses, :sse-reconnect-after-ms and
+;; :ws-reopen-after-ms come from the server, in the page
 (def shapes-by-name
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
                     :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
@@ -108,7 +108,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
     (.then (fn [{:orders/keys [of-shop]}] …)))
 
 (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
-                         {:on-open nil})                     ; or (fn [again?]), again? after a break
+                         {:on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
+                          :reconnect-after-ms sse-reconnect-after-ms})
 (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                         {:reopen-after-ms ws-reopen-after-ms})
 (mailroom/go-to-page! :orders/page {:order-id 42})            ; path params, {} for none

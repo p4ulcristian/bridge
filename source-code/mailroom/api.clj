@@ -69,9 +69,10 @@
    request or header line, and ws message taken. :ping-every-ms: how often
    an idle sse line gets a comment and a ws line {:mailroom/ping {}}, so
    proxies don't cut them. :sse-reconnect-after-ms: how long the browser
-   waits before it reopens a broken sse line, sent on the line (retry:).
-   :ws-reopen-after-ms: the same for ws; the app hands it to the browser
-   with the addresses. :stop-wait-ms: how long stop-server! lets running
+   waits before it reopens a broken sse line, sent on the line (retry:);
+   the app hands it to the browser with the addresses too, for a line the
+   server answered with an HTTP error. :ws-reopen-after-ms: the same for
+   ws; the app hands it to the browser with the addresses. :stop-wait-ms: how long stop-server! lets running
    requests finish; :stop-wait-after-cut-ms: how long it then waits for the
    cut ones' threads to end. :rate-limit-buckets-before-cleanup: above this
    many rate-limit buckets (one per message name and asker) in memory, the

@@ -4,7 +4,7 @@
    over http, sse and ws, and the pages in the address bar. The server's
    side is this namespace's .clj half.
 
-   The addresses, the ws reopen delay and the pages come from the server
+   The addresses, the sse and ws reopen delays and the pages come from the server
    (the app puts them in the page); the browser uses the same shapes as
    the server's handlers, by name, both written out (nil: as it is), from
    a .cljc file of the app's:
@@ -15,7 +15,7 @@
 
      (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}})   ; a promise of the shaped answer
      (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
-                              {:on-open nil})
+                              {:on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
      (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
                              {:reopen-after-ms ws-reopen-after-ms})              ; the server's setting, from the page
 
@@ -37,11 +37,16 @@
 
 (defn open-sse-line!
   "sse: opens the stream; each named message, shaped by its :answer-shape,
-   goes to its handler by name. After a break the browser reopens it,
-   after the server's :sse-reconnect-after-ms (sent on the line). Options,
-   every key required: :on-open, (on-open again?) each time it opens, or
-   nil; again? is true after a break, when messages may have been missed.
-   A missing or bad option refuses, :mailroom/bad-options."
+   goes to its handler by name. It stays open until close-sse-line!: after
+   a break in the network the browser reopens it, after the server's
+   :sse-reconnect-after-ms (sent on the line); after an HTTP error (a
+   proxy's 502 during a deploy), which the browser doesn't reopen, a new
+   line opens after :reconnect-after-ms, and again after each failure.
+   Options, every key required: :on-open, (on-open again?) each time it
+   opens, or nil; again? is true after a break, when messages may have
+   been missed. :reconnect-after-ms, the server's :sse-reconnect-after-ms
+   setting, which the app puts in the page with the addresses. A missing
+   or bad option refuses, :mailroom/bad-options."
   [address shapes-by-name handlers options]
   (sse/open-sse-line! address shapes-by-name handlers options))
 

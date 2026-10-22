@@ -2,7 +2,7 @@
 
 One file per decision: `YYYY-MM-DD-what-we-decided.md`. The title is the decision. Each file says what we decided, why, and what we chose against. A decision changes by a new file; the old one says so at the top (`Replaced by` or `Changed in part by`), and nothing else in it is rewritten.
 
-All but the last three were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries".
+All but the last four were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries".
 
 ## In force
 
@@ -20,7 +20,8 @@ All but the last three were made while mailroom was three libraries inside Groun
 - [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md), changed in part by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
-- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
+- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md)
+- [An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed](2026-10-22-sse-reopens-after-an-http-error.md)
 
 ## Replaced
 

@@ -32,7 +32,10 @@
    :ping-every-ms: how often an idle sse line gets a comment and a ws line
    {:mailroom/ping {}}, so proxies don't cut them.
    :sse-reconnect-after-ms: how long the browser waits before it reopens a
-   broken sse line; sent on the line as its retry: field when it opens.
+   broken sse line; sent on the line as its retry: field when it opens, and
+   handed to the browser by the app (open-sse-line!'s :reconnect-after-ms)
+   for a line the server answered with an HTTP error, which the browser
+   doesn't reopen by itself.
    :ws-reopen-after-ms: how long the browser waits before it reopens a
    broken ws line; the server doesn't read it, the app hands it to the
    browser with the addresses (open-ws-line!'s :reopen-after-ms).
@@ -139,9 +142,13 @@
 (def sse-options-shape
   "open-sse-line!'s options, every key required. :on-open: (on-open again?)
    each time the line opens, again? true after a break; nil when nothing
-   runs then."
+   runs then. :reconnect-after-ms: how long it waits before it opens a new
+   line when the server answered with an HTTP error, which the browser
+   doesn't reopen by itself (the server's :sse-reconnect-after-ms setting,
+   which the app hands to the browser)."
   [:map {:closed true}
-   [:on-open [:maybe fn?]]])
+   [:on-open [:maybe fn?]]
+   [:reconnect-after-ms [:int {:min 1}]]])
 
 (def ws-options-shape
   "open-ws-line!'s options, every key required. :reopen-after-ms: how long
