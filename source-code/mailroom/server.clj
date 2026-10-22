@@ -4,21 +4,20 @@
   (:require
    [org.httpkit.server :as http-kit])
   (:import
-   (java.lang System$Logger System$Logger$Level)
    (java.util.concurrent ExecutorService Executors TimeUnit)))
 
-(def ^:private ^System$Logger logger (System/getLogger "mailroom"))
-
-(defn- log-at [level]
+(defn- write-to-log [log level event]
   (fn [message error]
-    (.log logger ^System$Logger$Level level ^String (str message) ^Throwable error)))
+    (log level event (cond-> {:mailroom/http-kit-message (str message)}
+                       (some? error) (assoc :error error)))))
 
 (defn start-server!
   "Starts http-kit with the settings: where it listens, what it takes, what
-   it says. The server keeps the two stop waits for stop-server!. Returns
+   it says; its own errors and warnings go to the options' :log. The
+   server keeps the two stop waits for stop-server!. Returns
    {:port the-port …}."
   [ring-handler {:keys [ip port proxy-protocol server-header max-body-bytes max-header-line-bytes max-ws-message-bytes
-                        stop-wait-ms stop-wait-after-cut-ms]}]
+                        stop-wait-ms stop-wait-after-cut-ms]} {:keys [log]}]
   (let [workers (Executors/newVirtualThreadPerTaskExecutor)
         server  (http-kit/run-server ring-handler {:ip                   ip
                                                    :port                 port
@@ -28,11 +27,10 @@
                                                    :max-line             max-header-line-bytes
                                                    :max-ws               max-ws-message-bytes
                                                    :worker-pool          workers
-                                                   ;; http-kit's own errors and warnings go to the same
-                                                   ;; log as a handler's failures; its per-request events
-                                                   ;; are not logged
-                                                   :error-logger         (log-at System$Logger$Level/ERROR)
-                                                   :warn-logger          (log-at System$Logger$Level/WARNING)
+                                                   ;; http-kit's own errors and warnings go to the app's
+                                                   ;; log; its per-request events are not logged
+                                                   :error-logger         (write-to-log log :error :mailroom/server-error)
+                                                   :warn-logger          (write-to-log log :warn :mailroom/server-warning)
                                                    :ring-async?          false
                                                    :legacy-return-value? false})]
     {:port                            (http-kit/server-port server)

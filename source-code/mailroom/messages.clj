@@ -14,6 +14,12 @@
       :mailroom/message-name :orders/of-shop
       :mailroom/message-data {:shop/id #uuid \"…\"}}
 
+   with what every step may use, beside them:
+
+     {:mailroom/log  the app's log, with {:request-id \"…\"} as its context,
+                     a new random id for each message (every name in it)
+      :mailroom/wire the app's wire}
+
    and the answer a step adds goes out as JSON data, by the :answer-shape
    (nil: as it is). Each name runs apart: a failure answers {:error …}
    under its own name, and its details go to the log only.
@@ -25,16 +31,17 @@
 
      {:orders/of-shop […] :mailroom/notes {:orders/of-shop {:tables [\"orders\"]}}}"
   (:require
+   [logbook.api :as logbook]
    [mailroom.steps :as steps]
    [mailroom.limits :as limits]
-   [wire.api :as wire])
-  (:import
-   (java.lang System$Logger System$Logger$Level)))
+   [wire.api :as wire]))
 
-(defn- make-context [request message-name message-data]
+(defn- make-context [wire log request message-name message-data]
   {:mailroom/request      request
    :mailroom/message-name message-name
-   :mailroom/message-data message-data})
+   :mailroom/message-data message-data
+   :mailroom/log          log
+   :mailroom/wire         wire})
 
 (defn- turn-params-into-shaped-data-or-errors [wire {:keys [params-shape]} json-data]
   (if params-shape
@@ -65,27 +72,35 @@
   [answer]
   (and (map? answer) (= #{:error} (set (keys answer)))))
 
+(defn- note-each-context
+  "The steps, each noting the context it returns in latest, so a failure is
+   written to the log the steps had got to (one that knows who is asking)."
+  [latest handler-steps]
+  (mapv (fn [{:keys [enter] :as step}]
+          (assoc step :enter (fn [context] (vreset! latest (enter context)))))
+        handler-steps))
+
 (defn- run-steps
   "The handler's steps over the context, to the context they end with. A
    handler's :run-steps-in, when it isn't nil, is handed the running of them,
    to run them inside what it sets up (a transaction): (run-steps-in run
-   context), returning the context run returned, or one with its own answer."
-  [{handler-steps :steps :keys [run-steps-in]} context]
-  (let [run #(run-steps-until-answered handler-steps %)]
+   context), returning the context run returned, or one with its own answer.
+   latest holds the newest context the steps were handed or returned."
+  [latest {handler-steps :steps :keys [run-steps-in]} context]
+  (let [noted-steps (note-each-context latest handler-steps)
+        run         #(run-steps-until-answered noted-steps (vreset! latest %))]
     (if run-steps-in (run-steps-in run context) (run context))))
 
 (defn- run-handler
   "{:answer … :notes …} for one named message."
-  [wire handler request message-name json-data]
+  [wire latest handler request message-name json-data]
   (let [{:keys [shaped-data errors]} (turn-params-into-shaped-data-or-errors wire handler json-data)]
     (if errors
       {:answer {:errors errors}}
-      (let [context (run-steps handler (make-context request message-name shaped-data))
+      (let [context (run-steps latest handler (make-context wire (:mailroom/log @latest) request message-name shaped-data))
             answer  (:mailroom/answer context)]
         {:answer (if (is-only-an-error? answer) answer (turn-answer-into-json-data wire handler answer))
          :notes  (:mailroom/notes context)}))))
-
-(def ^:private ^System$Logger logger (System/getLogger "mailroom"))
 
 (def ^:private went-wrong {:error "Something went wrong."})
 
@@ -100,17 +115,20 @@
 
 (defn- run-named-message
   "[name {:answer … :notes …}]. Over its :rate-limit, \"Too many requests.\"
-   and nothing runs. A failure is logged with its details and answered with
-   a plain error: a database's message never reaches the browser."
-  [wire handlers limiter request [message-name json-data]]
+   and nothing runs. A failure is written with its details to the log the
+   steps had got to (the message's, with whatever a step added) and
+   answered with a plain error: a database's message never reaches the
+   browser."
+  [wire log handlers limiter request [message-name json-data]]
   [message-name
    (if-let [handler (get handlers message-name)]
-     (try (if (is-over-limit? limiter request message-name handler)
-            {:answer too-many}
-            (run-handler wire handler request message-name json-data))
-          (catch Exception e
-            (.log logger System$Logger$Level/ERROR (str "Handler " message-name " failed") ^Throwable e)
-            {:answer went-wrong}))
+     (let [latest (volatile! {:mailroom/log log})]
+       (try (if (is-over-limit? limiter request message-name handler)
+              {:answer too-many}
+              (run-handler wire latest handler request message-name json-data))
+            (catch Exception e
+              ((or (:mailroom/log @latest) log) :error :mailroom/handler-failed {:mailroom/message-name message-name :error e})
+              {:answer went-wrong})))
      {:answer {:error (str "No handler named " message-name)}})])
 
 (defn answer-named-messages
@@ -118,9 +136,12 @@
    and :mailroom/notes beside them when a handler has notes. limiter is the
    server's (limits.clj), counting each handler's :rate-limit, or
    :no-rate-limits, written out, where there is no server (tests, the REPL).
-   wire is the app's, which the data comes in and the answers go out by."
-  [wire handlers limiter request message]
-  (let [results (into {} (map #(run-named-message wire handlers limiter request %)) message)
-        notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
+   wire is the app's, which the data comes in and the answers go out by;
+   log the app's, which this message's log is made from, with a new
+   request id as its context. The id isn't in the answer."
+  [wire log handlers limiter request message]
+  (let [request-log (logbook/with-context log {:request-id (str (random-uuid))})
+        results     (into {} (map #(run-named-message wire request-log handlers limiter request %)) message)
+        notes       (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
     (cond-> (update-vals results :answer)
       (seq notes) (assoc :mailroom/notes notes))))

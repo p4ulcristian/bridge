@@ -12,7 +12,9 @@
    They are checked by malli itself, not through wire: they are values the
    app hands in, not data crossing an edge. The functions that do send or
    read data across an edge take the app's wire under :wire in their
-   options; mailroom never makes one."
+   options; mailroom never makes one. On the server, the functions that
+   answer messages or run the server take the app's log under :log;
+   mailroom never decides how a line is written."
   (:require
    [malli.core :as malli]
    [malli.error :as malli-error]))
@@ -80,16 +82,26 @@
    app and handed to every function that sends or reads a message."
   [:wire [some? {:error/message "should be the app's wire, made by wire.api/make-wire-from-settings"}]])
 
+(def log-entry
+  "The app's log function, (log level event data), made by logbook's
+   log-function or with-context: each message gets one with its request id
+   as context, and a handler's failure and the server's errors are written
+   to it."
+  [:log [fn? {:error/message "should be the app's log function, made by logbook"}]])
+
 (def routes-options-shape
   "make-routes-for-messages's options, every key required.
    :wire: the app's wire, for every message the three routes read and
    write; each line they open carries it, for send-message-on-sse-line!
    and send-message-on-ws-line!.
+   :log: the app's log; each message's steps get one with a new request id
+   as context (:mailroom/log), and a handler's failure is written to it.
    :find-rate-limit-key: (fn [request]) telling askers apart for the
    handlers' :rate-limit. The four hooks: each (fn [line]), or nil written
    out when nothing runs then."
   [:map {:closed true}
    wire-entry
+   log-entry
    [:find-rate-limit-key fn?]
    [:on-sse-open [:maybe fn?]]
    [:on-sse-close [:maybe fn?]]
@@ -139,9 +151,16 @@
 (def answer-options-shape
   "answer-message's options, every key required. :wire: the app's wire,
    which turns the message's data into shaped data and the answer into
-   JSON data, as over http."
+   JSON data, as over http. :log: the app's log, as the routes take it."
   [:map {:closed true}
-   wire-entry])
+   wire-entry
+   log-entry])
+
+(def server-options-shape
+  "start-server!'s options, every key required. :log: the app's log;
+   http-kit's own errors and warnings are written to it."
+  [:map {:closed true}
+   log-entry])
 
 (def pages-shape
   "The app's pages by namespaced name. :address, its path with its params
@@ -215,6 +234,9 @@
 
 (defn check-rate-limits-outside-a-server [rate-limits]
   (check-data-for-shape "The rate limits" :mailroom/bad-options rate-limits-outside-a-server-shape rate-limits))
+
+(defn check-server-options [options]
+  (check-data-for-shape "The options" :mailroom/bad-options server-options-shape options))
 
 (defn check-answer-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options answer-options-shape options))

@@ -1,5 +1,7 @@
 # Every value that sets behaviour is a setting; no hidden defaults
 
+> **Changed in part** by [The app passes its log](2026-10-22-the-app-passes-its-log.md) (2026-10-22, v0.3.0): a handler's failure and http-kit's errors and warnings go to the app's log, `:log`, not to `System.Logger` `mailroom`; `start-server!` takes an options map, `{:log log}`.
+
 > **Changed in part** by [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md) (2026-10-22, v0.2.0): `answer-message` takes an options map, `{:wire wire}`, last; the settings and options are checked by malli itself.
 
 > **Changed in part** by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md) (2026-10-22, v0.1.3): the app hands `:sse-reconnect-after-ms` to the browser too, `open-sse-line!`'s required `:reconnect-after-ms`, and a line the server answered with an HTTP error opens again after it.

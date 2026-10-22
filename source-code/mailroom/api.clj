@@ -26,28 +26,42 @@
                     :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                     :rate-limit-buckets-before-cleanup 10000})
 
-     ;; the app's wire, made once by the app (mailroom never makes one)
+     ;; the app's wire and log, made once by the app (mailroom makes neither)
      (def wire (wire.api/make-wire-from-settings wire-settings))
+     (def log (logbook.api/log-function (logbook.api/make-logbook logbook-settings)))
 
      (mailroom/start-server!
       (mailroom/make-ring-handler-from-routes
        (mailroom/make-routes-for-messages
         handlers settings
         {:wire                wire
+         :log                 log
          :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
          :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
        {:files nil})
-      settings)
+      settings
+      {:log log})
 
    Nothing has a default: the settings (settings-shape), the handlers and
    the options are checked first, every key written out, nil where nothing
    applies; a missing one refuses, named, with every other problem at once.
+
+   Each message's steps get, beside the request, its name and its data,
+   what every step may use: :mailroom/log, the app's log with a new random
+   request id as its context ({:request-id \"…\"}), and :mailroom/wire,
+   the app's wire. A step that learns more (who is asking) puts a log with
+   more context back at :mailroom/log, for the steps after it. A handler's
+   failure is written to that log, :error :mailroom/handler-failed;
+   http-kit's own errors and warnings to start-server!'s :log,
+   :mailroom/server-error and :mailroom/server-warning. mailroom writes
+   nowhere else.
 
    A line (an open sse or ws connection) is
    {:mailroom/channel … :mailroom/request … :mailroom/wire …}: it carries
    the wire its routes were made with, which messages sent on it are
    written by."
   (:require
+   [logbook.api :as logbook]
    [mailroom.http :as http]
    [mailroom.limits :as limits]
    [mailroom.messages :as messages]
@@ -99,6 +113,8 @@
    requests.\"), nil for none; :run-steps-in, (fn [run context]), nil for
    none. Options, each required: :wire, the app's wire (wire.api's
    make-wire-from-settings), which every message is read and written by;
+   :log, the app's log (logbook's), which each message's log is made from,
+   with a new request id;
    :find-rate-limit-key, (fn [request])
    telling askers apart, such as find-client-address with the settings'
    :client-address-header; :on-sse-open, :on-sse-close, :on-ws-open,
@@ -109,19 +125,23 @@
   (settings/check-settings settings)
   (settings/check-handlers handlers)
   (settings/check-routes-options options)
+  ;; a log logbook didn't make can't carry a request id: refused now, not at the first message
+  (logbook/with-context (:log options) {})
   (let [{:keys [addresses ping-every-ms rate-limit-buckets-before-cleanup]} settings
         limiter (limits/make-limiter (:find-rate-limit-key options) rate-limit-buckets-before-cleanup)]
-    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http (:wire options) handlers limiter)}}]
+    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http (:wire options) (:log options) handlers limiter)}}]
      [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse settings options)}}]
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
 
 (defn start-server!
   "Starts http-kit serving one Ring handler, every request on its own
    virtual thread, at the settings' :ip and :port (0 picks a free one).
-   The settings are checked first. Returns the running server:
+   Options, every key required: {:log log}, the app's log, which
+   http-kit's own errors and warnings are written to. The settings and
+   options are checked first. Returns the running server:
    {:port the-port …}."
-  [ring-handler settings]
-  (server/start-server! ring-handler (settings/check-settings settings)))
+  [ring-handler settings options]
+  (server/start-server! ring-handler (settings/check-settings settings) (settings/check-server-options options)))
 
 (defn stop-server!
   "Stops taking requests, lets running ones finish (up to the settings'
@@ -156,13 +176,14 @@
    out: the server's limiter counts a handler's :rate-limit, and here there
    is none. request is the Ring request it came with (its cookie, its
    origin). Notes, when a handler has them, are beside the answers under
-   :mailroom/notes. Options, every key required: :wire, the app's wire. The
-   handlers and the options are checked first."
+   :mailroom/notes. Options, every key required: :wire, the app's wire;
+   :log, the app's log, which the message's log is made from. The handlers
+   and the options are checked first."
   [handlers rate-limits request message options]
   (settings/check-handlers handlers)
   (settings/check-rate-limits-outside-a-server rate-limits)
   (settings/check-answer-options options)
-  (messages/answer-named-messages (:wire options) handlers rate-limits request message))
+  (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Routes

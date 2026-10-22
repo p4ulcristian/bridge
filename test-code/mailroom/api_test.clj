@@ -2,7 +2,9 @@
   (:require
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
+   [logbook.api :as logbook]
    [mailroom.api :as mailroom]
+   [mailroom.test-log :as test-log :refer [log]]
    [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
@@ -29,6 +31,7 @@
 
 (def ^:private options
   {:wire                wire
+   :log                 log
    :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -50,7 +53,7 @@
   (get-in (nth routes index) [1 method :handler]))
 
 (defn- with-server [ring-handler f]
-  (let [server (mailroom/start-server! ring-handler settings)]
+  (let [server (mailroom/start-server! ring-handler settings {:log log})]
     (try (f (:port server)) (finally (mailroom/stop-server! server)))))
 
 (defn- post-json [port body]
@@ -151,17 +154,55 @@
 
 (deftest answer-message-says-there-are-no-rate-limits
   (let [limited {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
-        ask     #(mailroom/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}} {:wire wire})]
+        ask     #(mailroom/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}} {:wire wire :log log})]
     (is (= [{:greetings/hello {:hello "Anna"}} {:greetings/hello {:hello "Anna"}}] [(ask) (ask)])
         "outside a server nothing counts, and the call says so"))
   (is (= :mailroom/bad-options
-         (try (mailroom/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire})
+         (try (mailroom/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
       "nil is not a choice: :no-rate-limits is written out")
   (let [{:keys [type errors]} (try (mailroom/answer-message handlers :no-rate-limits {} {:greetings/hello {:name "Anna"}} {})
                                    (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-    (is (= :mailroom/bad-options type) "mailroom makes no wire: the caller hands its own in")
-    (is (contains? errors :wire))))
+    (is (= :mailroom/bad-options type) "mailroom makes no wire and no log: the caller hands its own in")
+    (is (= #{:wire :log} (set (keys errors))))))
+
+(def ^:private person-id #uuid "41000000-0000-4000-8000-000000000041")
+
+(def ^:private what-steps-may-use (atom []))
+
+(def ^:private steps-that-log
+  {:greetings/noted  (make-handler [{:name  :note
+                                     :enter (fn [{:mailroom/keys [log wire] :as context}]
+                                              (swap! what-steps-may-use conj (some? wire))
+                                              (log :info :test/step-ran {})
+                                              (mailroom/add-answer-to-context context "noted"))}])
+   :greetings/broken (make-handler [{:name  :find-person
+                                     :enter #(update % :mailroom/log logbook/with-context {:person-id person-id})}
+                                    {:name  :break
+                                     :enter (fn [{:mailroom/keys [log]}]
+                                              (log :info :test/about-to-break {})
+                                              (throw (ex-info "it broke" {:cause :test})))}])})
+
+(deftest each-message-gets-a-log-with-its-own-request-id
+  (reset! test-log/lines [])
+  (let [ask #(mailroom/answer-message steps-that-log :no-rate-limits {} % {:wire wire :log log})]
+    (is (= {:greetings/noted "noted" :greetings/broken {:error "Something went wrong."}}
+           (ask {:greetings/noted {} :greetings/broken {}})))
+    (ask {:greetings/noted {}})
+    (let [[first-noted second-noted] (test-log/find-lines "test/step-ran")
+          [about-to-break]           (test-log/find-lines "test/about-to-break")
+          [failed]                   (test-log/find-lines "mailroom/handler-failed")
+          request-id                 #(get-in % ["context" "request-id"])]
+      (is (re-matches #"[0-9a-f-]{36}" (request-id first-noted)) "a new random id")
+      (is (= (request-id first-noted) (request-id about-to-break) (request-id failed))
+          "every name of one message shares its message's id")
+      (is (not= (request-id first-noted) (request-id second-noted)) "the next message has its own")
+      (is (= [true true] @what-steps-may-use) "the steps get the app's wire too")
+      (testing "a failure is written to the log the steps had got to"
+        (is (= ["error" (str person-id) {"mailroom/message-name" "greetings/broken"} "it broke"]
+               [(get failed "level") (get-in failed ["context" "person-id"]) (get failed "data")
+                (get-in failed ["error" "message"])])
+            "the person a step added is in the failure's line")))))
 
 (deftest stop-lets-a-running-request-finish-then-returns
   (let [started  (promise)
@@ -171,7 +212,8 @@
                                                            (Thread/sleep 300)
                                                            (mailroom/add-answer-to-context context "done"))}])}
         server   (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
-                                         (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500))
+                                         (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500)
+                                         {:log log})
         answer   (future (post-json (:port server) "{\"greetings/slow\":{}}"))]
     (deref started 5000 nil)
     (is (true? (mailroom/stop-server! server)) "every request's thread had ended")
@@ -185,7 +227,8 @@
                                                           (Thread/sleep 5000)
                                                           (mailroom/add-answer-to-context context "done"))}])}
         server  (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
-                                        (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000))
+                                        (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000)
+                                        {:log log})
         answer  (future (try (post-json (:port server) "{\"greetings/slow\":{}}") (catch Exception _ :cut)))
         _       (deref started 5000 nil)
         began   (System/currentTimeMillis)]
@@ -195,7 +238,8 @@
 
 (deftest a-body-over-the-setting-is-refused
   (let [server (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages handlers settings options) 0 :post)
-                                       (assoc settings :max-body-bytes 16))]
+                                       (assoc settings :max-body-bytes 16)
+                                       {:log log})]
     (try
       (is (= 413 (first (post-json (:port server) "{\"greetings/hello\":{\"name\":\"Anna\"}}"))))
       (is (= 200 (first (post-json (:port server) "{\"x/y\":{}}"))) "within it, answered")

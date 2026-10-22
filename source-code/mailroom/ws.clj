@@ -22,9 +22,9 @@
   [line message]
   (http-kit/send! (:mailroom/channel line) (wire/turn-data-into-json-text (:mailroom/wire line) message)))
 
-(defn- answer-on-line! [handlers limiter {wire :mailroom/wire :as line} text]
+(defn- answer-on-line! [log handlers limiter {wire :mailroom/wire :as line} text]
   (let [message (wire/turn-json-text-into-data wire text)]
-    (send-message-on-ws-line! line (messages/answer-named-messages wire handlers limiter (:mailroom/request line) message))))
+    (send-message-on-ws-line! line (messages/answer-named-messages wire log handlers limiter (:mailroom/request line) message))))
 
 (defn- keep-pinging! [wire channel ping-every-ms]
   (let [ping (wire/turn-data-into-json-text wire {:mailroom/ping {}})]
@@ -32,19 +32,20 @@
      #(while (do (Thread/sleep (long ping-every-ms))
                  (http-kit/send! channel ping))))))
 
-(defn- open-websocket [request handlers limiter ping-every-ms {:keys [wire on-ws-open on-ws-close]}]
+(defn- open-websocket [request handlers limiter ping-every-ms {:keys [wire log on-ws-open on-ws-close]}]
   (http-kit/as-channel request
                        {:on-open    (fn [channel]
                                       (keep-pinging! wire channel ping-every-ms)
                                       (when on-ws-open (on-ws-open (make-line wire channel request))))
-                        :on-receive #(answer-on-line! handlers limiter (make-line wire %1 request) %2)
+                        :on-receive #(answer-on-line! log handlers limiter (make-line wire %1 request) %2)
                         :on-close   (fn [channel _status]
                                       (when on-ws-close (on-ws-close (make-line wire channel request))))}))
 
 (defn make-ring-handler-for-ws
   "A Ring handler that upgrades to a websocket answering named messages,
-   pinging it every ping-every-ms, by the options' :wire. A request that
-   isn't a websocket gets 400."
+   pinging it every ping-every-ms, by the options' :wire, each message with
+   its own log made from the options' :log. A request that isn't a
+   websocket gets 400."
   [handlers limiter ping-every-ms options]
   (fn [request]
     (if (:websocket? request)

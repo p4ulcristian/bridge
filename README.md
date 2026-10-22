@@ -17,8 +17,10 @@ io.github.p4ulcristian/mailroom {:git/tag "v0.2.0" :git/sha "ee4331c"}
 
 Needs http-kit, reitit (reitit-ring on the server, reitit-frontend in the
 browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
-types across the edge). One public namespace, `mailroom.api`: a `.clj` for
-the server, a `.cljs` for the browser.
+types across the edge), and on the server
+[logbook](https://github.com/p4ulcristian/logbook) (the app's log, handed
+down). One public namespace, `mailroom.api`: a `.clj` for the server, a
+`.cljs` for the browser.
 
 The app makes its wire once, on each side, and hands it in: every function
 that sends or reads a message takes it under `:wire` in its options
@@ -26,16 +28,26 @@ that sends or reads a message takes it under `:wire` in its options
 `send-message!`, `open-sse-line!`, `open-ws-line!`), and a line keeps the
 one it was opened with. mailroom never makes a wire.
 
+So with the log, on the server: `make-routes-for-messages` and
+`answer-message` take the app's `(log level event data)` under `:log`,
+`start-server!` in a new options map, `{:log log}`. Each message gets a log
+with a new random `{:request-id "…"}` as its context; every step's context
+holds it at `:mailroom/log`, and the app's wire at `:mailroom/wire`. A step
+that learns more (who is asking) puts a log with more context back at
+`:mailroom/log` for the steps after it. A handler that throws is written
+there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
+`start-server!`'s log ([why](decisions/2026-10-22-the-app-passes-its-log.md)).
+
 ## The api
 
 | side | name | does |
 |---|---|---|
 | server | `settings-shape` | the settings as a malli shape, every key required |
-| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`; a handler's `:rate-limit` counted per asker |
+| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire` and `:log`; a handler's `:rate-limit` counted per asker |
 | server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none) |
-| server | `start-server!` `stop-server!` | http-kit, every request on a virtual thread |
+| server | `start-server!` `stop-server!` | http-kit, every request on a virtual thread; `{:log log}` |
 | server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` | the server sends on an open line by itself, by the wire the line keeps |
-| server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire}`) |
+| server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire :log log}`) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
 | browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire` |
@@ -49,7 +61,8 @@ every other problem at once. No function fills in an argument. What stays
 fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).
 
 ```clojure
-(require '[mailroom.api :as mailroom]
+(require '[logbook.api :as logbook]
+         '[mailroom.api :as mailroom]
          '[wire.api :as wire])
 
 ;; the app's wire, made once (wire's settings, every key written out)
@@ -59,6 +72,10 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
     :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
                        :max-name-length 50000 :max-document-length nil :max-token-count nil
                        :max-writing-nesting-depth 1000}}))
+
+;; the app's log, made once (logbook's settings, every key written out)
+(def log (logbook/log-function (logbook/make-logbook {:lowest-level :info :format :json
+                                                      :errors-kept 1000 :write-to :stdout})))
 
 (def settings
   {:ip "0.0.0.0" :port 8080
@@ -78,8 +95,9 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 (def find-orders-of-shop
   {:name  :find-orders-of-shop
-   :enter (fn [context]
-            (assoc context :orders (find-orders db (get-in context [:mailroom/message-data :shop/id]))))})
+   :enter (fn [{:mailroom/keys [log message-data] :as context}]   ; log: the message's, with its request id
+            (log :debug :orders/finding {:shop/id (:shop/id message-data)})
+            (assoc context :orders (find-orders db (:shop/id message-data))))})
 
 (def add-orders-answer
   {:name  :add-orders-answer
@@ -101,6 +119,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
     (into (mailroom/make-routes-for-messages
            handlers settings
            {:wire                wire
+            :log                 log            ; the app's (logbook's): each message's steps get one with a request id
             :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
             :on-sse-close        forget-line!
@@ -110,7 +129,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
     {:files {:folder                     "target/public"
              :hashed-name-min-hex-digits 8           ; main.3F9A0C1D.js is hashed
              :hashed-file-cache-seconds  31536000}}) ; and kept a year; any other file: no-cache
-   settings))
+   settings
+   {:log log}))                                   ; http-kit's errors and warnings
 
 ;; the browser, with the same shapes from a .cljc file, both written out for
 ;; every name it sends or gets; the addresses, :sse-reconnect-after-ms and

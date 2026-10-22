@@ -2,6 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [mailroom.api :as mailroom]
+   [mailroom.test-log :as test-log :refer [log]]
    [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
@@ -13,6 +14,7 @@
 
 (def ^:private options
   {:wire                wire
+   :log                 log
    :find-rate-limit-key #(mailroom/find-client-address % nil)
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -44,7 +46,8 @@
                  (into (mailroom/make-routes-for-messages handlers settings options)
                        (mailroom/make-server-routes-for-pages pages page-handler))
                  {:files nil})
-                settings)
+                settings
+                {:log log})
         port   (:port server)]
     (try
       (testing "a named message on the http address"

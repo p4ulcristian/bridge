@@ -4,6 +4,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [mailroom.api :as mailroom]
+   [mailroom.test-log :as test-log :refer [log]]
    [mailroom.test-wire :refer [wire]]))
 
 (def ^:private settings
@@ -17,6 +18,7 @@
 
 (def ^:private options
   {:wire                wire
+   :log                 log
    :find-rate-limit-key identity
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -34,16 +36,21 @@
                            [:errors :addresses])
                    :ws)))
   (testing "a key no setting has"
-    (is (contains? (:errors (find-problems #(mailroom/start-server! identity (assoc settings :ping-ms 1))))
+    (is (contains? (:errors (find-problems #(mailroom/start-server! identity (assoc settings :ping-ms 1) {:log log})))
                    :ping-ms)))
   (testing "start-server! checks them too, before it starts"
-    (is (= :mailroom/bad-settings (:type (find-problems #(mailroom/start-server! identity (dissoc settings :ip))))))))
+    (is (= :mailroom/bad-settings (:type (find-problems #(mailroom/start-server! identity (dissoc settings :ip) {:log log}))))))
+  (testing "and its options: the app's log, which http-kit's errors go to"
+    (is (= {:type :mailroom/bad-options :errors {:log ["missing required key"]}}
+           (select-keys (find-problems #(mailroom/start-server! identity settings {})) [:type :errors])))))
 
 (deftest the-asker-key-and-the-hooks-are-required
   (let [{:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} settings {}))]
     (is (= :mailroom/bad-options type))
-    (is (= #{:wire :find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
+    (is (= #{:wire :log :find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
         "each missing one, named"))
+  (testing "the log is the app's, made by logbook: one it didn't make can't carry a request id"
+    (is (= :logbook/not-a-log (:type (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :log (fn [_ _ _]))))))))
   (testing "the wire is the app's, never nil: mailroom makes none"
     (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :wire nil))))
                    :wire)))
@@ -76,4 +83,4 @@
                      settings options)))))
   (testing "answer-message checks them too"
     (is (= :mailroom/bad-handlers
-           (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} {:wire wire})))))))
+           (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} {:wire wire :log log})))))))

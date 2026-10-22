@@ -20,9 +20,10 @@
 
 (defn make-ring-handler-for-http
   "A Ring handler that answers each named message in the body by its
-   handler, read and written by the app's wire."
-  [wire handlers limiter]
+   handler, read and written by the app's wire, each message with its own
+   log, made from the app's."
+  [wire log handlers limiter]
   (fn [request]
     (if-let [message (read-message wire request)]
-      (make-json-response wire (messages/answer-named-messages wire handlers limiter request message))
+      (make-json-response wire (messages/answer-named-messages wire log handlers limiter request message))
       not-json)))

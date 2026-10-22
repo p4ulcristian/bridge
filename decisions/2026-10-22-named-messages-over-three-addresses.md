@@ -1,5 +1,7 @@
 # Named messages over three addresses Groundwork owns
 
+> **Changed in part** by [The app passes its log](2026-10-22-the-app-passes-its-log.md) (2026-10-22, v0.3.0): a step's context also holds `:mailroom/log`, the message's log with its request id, and `:mailroom/wire`.
+
 > **Changed in part** by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) (2026-10-22): the three addresses are a required setting, `:addresses`, with no default; they are the app's to write, not Groundwork's.
 
 > **Changed in part** by Groundwork's decision "The server puts the browser's settings in the page" (2026-10-22): the addresses and the pages are said once, on the server, and reach the browser in the page; the `contract.cljc` copies are gone.
