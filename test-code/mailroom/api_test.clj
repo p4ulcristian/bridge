@@ -18,21 +18,29 @@
               (mailroom/add-answer-to-context context {:shop/id shop-id :total (if (uuid? shop-id) 120.50M 0M)})))})
 
 (def ^:private settings
-  {:ip "127.0.0.1" :port 0 :client-address-header nil
+  {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
+   :client-address-header nil :server-header nil
+   :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
+   :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
    :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private options
   {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
+(defn- make-handler
+  "A handler with every key written out: no shapes, no limit, run plainly."
+  [steps]
+  {:steps steps :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil})
+
 (def ^:private handlers
-  {:greetings/hello {:steps [say-hello]}
-   :shops/total     {:params-shape [:map [:shop/id :uuid]]
-                     :answer-shape [:map [:shop/id :uuid] [:total :decimal]]
-                     :steps        [answer-shop-total]}
-   :greetings/fail  {:steps [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}]}})
+  {:greetings/hello (make-handler [say-hello])
+   :shops/total     (assoc (make-handler [answer-shop-total])
+                           :params-shape [:map [:shop/id :uuid]]
+                           :answer-shape [:map [:shop/id :uuid] [:total :decimal]])
+   :greetings/fail  (make-handler [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}])})
 
 (defn- find-handler
   "The Ring handler of one of the three routes: 0 http, 1 sse, 2 ws."
@@ -84,9 +92,14 @@
               reader   (io/reader (.body response))
               line     (deref opened 5000 nil)]
           (is (mailroom/is-line-open? line))
+          (testing "the line first tells the browser when to reopen it: the setting, as retry:"
+            (is (= ["retry: 3000" ""] [(.readLine reader) (.readLine reader)])))
           (is (true? (mailroom/send-message-on-sse-line! line {:bells/changed {:table "orders"}} 17)))
-          (is (= ["id: 17" "data: {\"bells/changed\":{\"table\":\"orders\"}}"]
-                 [(.readLine reader) (.readLine reader)]))
+          (is (= ["id: 17" "data: {\"bells/changed\":{\"table\":\"orders\"}}" ""]
+                 [(.readLine reader) (.readLine reader) (.readLine reader)]))
+          (testing "no id, written out"
+            (is (true? (mailroom/send-message-on-sse-line! line {:bells/changed {:table "shops"}} nil)))
+            (is (= "data: {\"bells/changed\":{\"table\":\"shops\"}}" (.readLine reader))))
           (.close reader))))))
 
 (deftest ws-answers-by-the-same-handlers
@@ -120,7 +133,7 @@
 
 (deftest a-rate-limit-counts-each-asker-behind-the-proxy
   (let [behind-proxy (assoc settings :client-address-header "x-forwarded-for")
-        limited      {:greetings/hello {:rate-limit {:max 1 :per-ms 60000} :steps [say-hello]}}
+        limited      {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
         http-handler (find-handler (mailroom/make-routes-for-messages
                                     limited behind-proxy
                                     (assoc options :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header behind-proxy))))
@@ -133,3 +146,51 @@
     (is (= "{\"greetings/hello\":{\"error\":\"Too many requests.\"}}" (ask "1.1.1.1")))
     (is (= "{\"greetings/hello\":{\"hello\":\"Anna\"}}" (ask "2.2.2.2"))
         "another asker behind the same proxy has its own bucket")))
+
+(deftest answer-message-says-there-are-no-rate-limits
+  (let [limited {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
+        ask     #(mailroom/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}})]
+    (is (= [{:greetings/hello {:hello "Anna"}} {:greetings/hello {:hello "Anna"}}] [(ask) (ask)])
+        "outside a server nothing counts, and the call says so"))
+  (is (= :mailroom/bad-options
+         (try (mailroom/answer-message handlers nil {} {:greetings/hello {:name "Anna"}})
+              (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
+      "nil is not a choice: :no-rate-limits is written out"))
+
+(deftest stop-lets-a-running-request-finish-then-returns
+  (let [started  (promise)
+        slow     {:greetings/slow (make-handler [{:name  :slow
+                                                  :enter (fn [context]
+                                                           (deliver started true)
+                                                           (Thread/sleep 300)
+                                                           (mailroom/add-answer-to-context context "done"))}])}
+        server   (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
+                                         (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500))
+        answer   (future (post-json (:port server) "{\"greetings/slow\":{}}"))]
+    (deref started 5000 nil)
+    (is (true? (mailroom/stop-server! server)) "every request's thread had ended")
+    (is (= [200 "{\"greetings/slow\":\"done\"}"] (deref answer 5000 nil)) "within :stop-wait-ms it finishes")))
+
+(deftest stop-cuts-a-request-past-the-wait
+  (let [started (promise)
+        slow    {:greetings/slow (make-handler [{:name  :slow
+                                                 :enter (fn [context]
+                                                          (deliver started true)
+                                                          (Thread/sleep 5000)
+                                                          (mailroom/add-answer-to-context context "done"))}])}
+        server  (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
+                                        (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000))
+        answer  (future (try (post-json (:port server) "{\"greetings/slow\":{}}") (catch Exception _ :cut)))
+        _       (deref started 5000 nil)
+        began   (System/currentTimeMillis)]
+    (mailroom/stop-server! server)
+    (is (< (- (System/currentTimeMillis) began) 2000) "it waited :stop-wait-ms, cut, and didn't wait out the 5 s")
+    (is (not= [200 "{\"greetings/slow\":\"done\"}"] (deref answer 5000 nil)))))
+
+(deftest a-body-over-the-setting-is-refused
+  (let [server (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages handlers settings options) 0 :post)
+                                       (assoc settings :max-body-bytes 16))]
+    (try
+      (is (= 413 (first (post-json (:port server) "{\"greetings/hello\":{\"name\":\"Anna\"}}"))))
+      (is (= 200 (first (post-json (:port server) "{\"x/y\":{}}"))) "within it, answered")
+      (finally (mailroom/stop-server! server)))))

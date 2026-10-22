@@ -14,7 +14,7 @@
    :body    (wire/turn-data-into-json-text data)})
 
 (defn- read-message [request]
-  (try (let [message (wire/turn-json-text-into-data (slurp (:body request)))]
+  (try (let [message (wire/turn-json-text-into-data (slurp (:body request) :encoding "UTF-8"))]
          (when (map? message) message))
        (catch Exception _ nil)))
 

@@ -2,7 +2,7 @@
 
 One file per decision: `YYYY-MM-DD-what-we-decided.md`. The title is the decision. Each file says what we decided, why, and what we chose against. A decision changes by a new file; the old one says so at the top (`Replaced by` or `Changed in part by`), and nothing else in it is rewritten.
 
-All but the last two were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries".
+All but the last three were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries".
 
 ## In force
 
@@ -15,11 +15,12 @@ All but the last two were made while mailroom was three libraries inside Groundw
 - [web has http, sse and ws, a file each, and a route says its kind](2026-10-22-web-has-http-sse-and-ws.md), changed in part by [web becomes transport and routes](2026-10-22-transport-and-routes.md) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md), changed in part by "The server puts the browser's settings in the page" (Groundwork's) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
-- [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md)
+- [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [Answers are checked, errors stay in the log, and a handler may run its steps inside something](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md), changed in part by [An answer may carry notes](2026-10-22-an-answer-may-carry-notes.md)
 - [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md), changed in part by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
-- [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md)
-- [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md)
+- [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
+- [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
+- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 
 ## Replaced
 

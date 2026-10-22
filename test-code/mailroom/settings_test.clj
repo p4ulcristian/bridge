@@ -6,9 +6,12 @@
    [mailroom.api :as mailroom]))
 
 (def ^:private settings
-  {:ip "127.0.0.1" :port 0 :client-address-header nil
+  {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
+   :client-address-header nil :server-header nil
+   :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
+   :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
    :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private options
@@ -20,8 +23,7 @@
        (catch clojure.lang.ExceptionInfo e (ex-data e))))
 
 (deftest every-setting-is-required
-  (let [missing               #{:addresses :ping-every-ms :client-address-header
-                                :stop-wait-ms :ws-reopen-after-ms :rate-limit-buckets-before-cleanup}
+  (let [missing               (disj (set (keys settings)) :ip)
         {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} (apply dissoc settings missing) options))]
     (is (= :mailroom/bad-settings type))
     (is (= missing (set (keys errors))) "each missing one, named"))
@@ -48,6 +50,25 @@
     (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :on-ws-open "open"))))
                    :on-ws-open))))
 
-(deftest the-files-folder-is-written-out
+(deftest the-files-are-written-out
   (is (= :mailroom/bad-options (:type (find-problems #(mailroom/make-ring-handler-from-routes [] {})))))
-  (is (fn? (mailroom/make-ring-handler-from-routes [] {:files-folder nil}))))
+  (is (= #{:hashed-name-min-hex-digits :hashed-file-cache-seconds}
+         (set (keys (get-in (find-problems #(mailroom/make-ring-handler-from-routes [] {:files {:folder "public"}}))
+                            [:errors :files]))))
+      "with a folder, each of its keys, named")
+  (is (fn? (mailroom/make-ring-handler-from-routes [] {:files nil}))))
+
+(deftest every-handler-key-is-written-out
+  (let [step                  {:name :answer :enter #(mailroom/add-answer-to-context % "hi")}
+        {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {:greetings/hello {:steps [step]}} settings options))]
+    (is (= :mailroom/bad-handlers type))
+    (is (= #{:params-shape :answer-shape :rate-limit :run-steps-in} (set (keys (:greetings/hello errors))))
+        "each missing one, named"))
+  (testing "nil written out: no shapes, no limit, run plainly; a key of the app's own rides along"
+    (is (= 3 (count (mailroom/make-routes-for-messages
+                     {:greetings/hello {:steps [] :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil
+                                        :access/rule :anyone}}
+                     settings options)))))
+  (testing "answer-message checks them too"
+    (is (= :mailroom/bad-handlers
+           (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}})))))))

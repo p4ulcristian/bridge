@@ -5,16 +5,22 @@
    side is this namespace's .clj half.
 
    The addresses, the ws reopen delay and the pages come from the server
-   (the app puts them in the page); the browser uses the same shapes as the server's handlers, by
-   name, from a .cljc file of the app's:
+   (the app puts them in the page); the browser uses the same shapes as
+   the server's handlers, by name, both written out (nil: as it is), from
+   a .cljc file of the app's:
 
      (def shapes-by-name {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
-                                           :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}})
+                                           :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
+                          :sync/changed   {:params-shape nil :answer-shape nil}})
 
      (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}})   ; a promise of the shaped answer
-     (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change})
+     (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
+                              {:on-open nil})
      (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
-                             {:reopen-after-ms ws-reopen-after-ms})              ; the server's setting, from the page"
+                             {:reopen-after-ms ws-reopen-after-ms})              ; the server's setting, from the page
+
+   Nothing has a default: the shapes and the options are checked first, and
+   a missing key refuses, named (:mailroom/bad-shapes, :mailroom/bad-options)."
   (:require
    [mailroom.http :as http]
    [mailroom.routes :as routes]
@@ -24,17 +30,20 @@
 (defn send-message!
   "http: POSTs a named message, its data by :params-shape. A promise of the
    answer keyed by the same names, each shaped by its :answer-shape, and
-   :mailroom/notes beside them when the server sent notes."
+   :mailroom/notes beside them when the server sent notes. A name the
+   shapes don't have throws (:mailroom/no-shapes); nothing is sent."
   [address shapes-by-name message]
   (http/send-message! address shapes-by-name message))
 
 (defn open-sse-line!
   "sse: opens the stream; each named message, shaped by its :answer-shape,
-   goes to its handler by name. It reopens by itself after a break.
-   Options: :on-open, (on-open again?) each time it opens; again? is true
-   after a break, when messages may have been missed."
-  ([address shapes-by-name handlers] (open-sse-line! address shapes-by-name handlers {}))
-  ([address shapes-by-name handlers options] (sse/open-sse-line! address shapes-by-name handlers options)))
+   goes to its handler by name. After a break the browser reopens it,
+   after the server's :sse-reconnect-after-ms (sent on the line). Options,
+   every key required: :on-open, (on-open again?) each time it opens, or
+   nil; again? is true after a break, when messages may have been missed.
+   A missing or bad option refuses, :mailroom/bad-options."
+  [address shapes-by-name handlers options]
+  (sse/open-sse-line! address shapes-by-name handlers options))
 
 (defn close-sse-line!
   "sse: closes the line; it doesn't reopen."
@@ -68,17 +77,18 @@
 (defn start-following-address!
   "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
    now and on every move, nil for an address no page has. The page's :title
-   becomes the tab's title. pages is the map the server put in the page,
-   {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}."
+   becomes the tab's title (nil: the app sets it). pages is the map the
+   server put in the page, {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}."
   [pages on-page]
   (routes/start-following-address! pages on-page))
 
 (defn go-to-page!
-  "Moves to the page with this name and path params; Back returns."
-  ([page-name] (routes/go-to-page! page-name))
-  ([page-name path-params] (routes/go-to-page! page-name path-params)))
+  "Moves to the page with this name and path params, {} for none; Back
+   returns."
+  [page-name path-params]
+  (routes/go-to-page! page-name path-params))
 
 (defn make-address-of-page
-  "A page's address, for a link."
-  ([page-name] (routes/make-address-of-page page-name))
-  ([page-name path-params] (routes/make-address-of-page page-name path-params)))
+  "A page's address, for a link, with its path params, {} for none."
+  [page-name path-params]
+  (routes/make-address-of-page page-name path-params))

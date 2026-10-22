@@ -6,16 +6,16 @@
                        :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]
                        :steps        [find-orders-of-shop add-orders-answer]}}
 
-   The data comes in as JSON data; with a :params-shape it is turned into
+   The data comes in as JSON data; by its :params-shape it is turned into
    shaped data (real UUIDs, decimals, dates) or answered {:errors …} by key
-   before any step runs. The steps run over
+   before any step runs (a :params-shape of nil passes it as it is). The steps run over
 
      {:mailroom/request      the request
       :mailroom/message-name :orders/of-shop
       :mailroom/message-data {:shop/id #uuid \"…\"}}
 
    and the answer a step adds goes out as JSON data, by the :answer-shape
-   when there is one. Each name runs apart: a failure answers {:error …}
+   (nil: as it is). Each name runs apart: a failure answers {:error …}
    under its own name, and its details go to the log only.
 
    A handler may carry notes about its answer, besides it: what the context
@@ -67,7 +67,7 @@
 
 (defn- run-steps
   "The handler's steps over the context, to the context they end with. A
-   handler's :run-steps-in, when it has one, is handed the running of them,
+   handler's :run-steps-in, when it isn't nil, is handed the running of them,
    to run them inside what it sets up (a transaction): (run-steps-in run
    context), returning the context run returned, or one with its own answer."
   [{handler-steps :steps :keys [run-steps-in]} context]
@@ -91,8 +91,12 @@
 
 (def ^:private too-many {:error "Too many requests."})
 
-(defn- is-over-limit? [limiter request message-name {:keys [rate-limit]}]
-  (and limiter rate-limit (not (limits/is-message-allowed? limiter request message-name rate-limit))))
+(defn- is-over-limit?
+  "limiter is the server's, or :no-rate-limits outside a server."
+  [limiter request message-name {:keys [rate-limit]}]
+  (and (not= :no-rate-limits limiter)
+       rate-limit
+       (not (limits/is-message-allowed? limiter request message-name rate-limit))))
 
 (defn- run-named-message
   "[name {:answer … :notes …}]. Over its :rate-limit, \"Too many requests.\"
@@ -111,11 +115,11 @@
 
 (defn answer-named-messages
   "The answer to a message: the same names, each with its handler's answer,
-   and :mailroom/notes beside them when a handler has notes. With a
-   limiter (limits.clj), a handler's :rate-limit holds."
-  ([handlers request message] (answer-named-messages handlers nil request message))
-  ([handlers limiter request message]
-   (let [results (into {} (map #(run-named-message handlers limiter request %)) message)
-         notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
-     (cond-> (update-vals results :answer)
-       (seq notes) (assoc :mailroom/notes notes)))))
+   and :mailroom/notes beside them when a handler has notes. limiter is the
+   server's (limits.clj), counting each handler's :rate-limit, or
+   :no-rate-limits, written out, where there is no server (tests, the REPL)."
+  [handlers limiter request message]
+  (let [results (into {} (map #(run-named-message handlers limiter request %)) message)
+        notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
+    (cond-> (update-vals results :answer)
+      (seq notes) (assoc :mailroom/notes notes))))

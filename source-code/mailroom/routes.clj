@@ -8,29 +8,24 @@
    the browser gets the same map from the page (the app puts it there), so
    the two sides can't disagree."
   (:require
+   [mailroom.settings :as settings]
    [reitit.ring :as reitit]))
-
-(defn- check-page [[page-name {:keys [address]}]]
-  (when-not (qualified-keyword? page-name)
-    (throw (ex-info (str "A page's name must be namespaced: " page-name)
-                    {:type :mailroom/bad-page-name :name page-name})))
-  (when-not (string? address)
-    (throw (ex-info (str "The page " page-name " has no :address")
-                    {:type :mailroom/page-without-address :name page-name}))))
 
 (defn make-server-routes-for-pages
   "A GET route for each page, answered by page-handler (the page's HTML and
-   the app's JS), so a page opened fresh or reloaded works. A page without a
-   namespaced name or an address throws."
+   the app's JS), so a page opened fresh or reloaded works. The pages are
+   checked first (settings/pages-shape): each a namespaced name, an
+   :address and a :title (nil when the app sets the title itself)."
   [pages page-handler]
-  (run! check-page pages)
+  (settings/check-pages pages)
   (vec (for [[page-name page] pages]
          [(:address page) {:name page-name :get {:handler page-handler}}])))
 
-(defn- is-name-hashed?
-  "main.3F9A0C1D2E….js: a release build's file, whose name changes with its content."
-  [uri]
-  (boolean (re-find #"\.[0-9A-Fa-f]{8,}\.[a-z]+$" uri)))
+(defn- make-hashed-name-pattern
+  "main.3F9A0C1D2E….js: a release build's file, whose name changes with its
+   content; at least min-hex-digits hex digits before the extension."
+  [min-hex-digits]
+  (re-pattern (str "\\.[0-9A-Fa-f]{" min-hex-digits ",}\\.[a-z]+$")))
 
 (defn- does-browser-take-gzip? [request]
   (boolean (some-> (get-in request [:headers "accept-encoding"]) (.contains "gzip"))))
@@ -51,22 +46,46 @@
         (file-handler request)))))
 
 (defn- add-cache-header
-  "A hashed file never changes, so it is kept for a year; any other file
-   is asked again each time (its name stays when it changes)."
-  [file-handler]
-  (fn [request]
-    (when-let [response (file-handler request)]
-      (assoc-in response [:headers "cache-control"]
-                (if (is-name-hashed? (:uri request)) "public, max-age=31536000, immutable" "no-cache")))))
+  "A hashed file never changes, so it is kept :hashed-file-cache-seconds;
+   any other file is asked again each time (its name stays when it
+   changes)."
+  [file-handler {:keys [hashed-name-min-hex-digits hashed-file-cache-seconds]}]
+  (let [hashed-name (make-hashed-name-pattern hashed-name-min-hex-digits)
+        kept        (str "public, max-age=" hashed-file-cache-seconds ", immutable")]
+    (fn [request]
+      (when-let [response (file-handler request)]
+        (assoc-in response [:headers "cache-control"]
+                  (if (re-find hashed-name (:uri request)) kept "no-cache"))))))
+
+(defn- make-file-handler
+  "Files from the folder, by their exact names: a folder's address is never
+   answered with a file in it nor redirected (a page is answered by name,
+   by the page handler), and no link leads out of the folder. Nil when the
+   folder has no such file, so the default handler answers."
+  [{:keys [folder] :as files}]
+  (-> (reitit/create-file-handler {:path               "/"
+                                   :root               folder
+                                   :index-files        []
+                                   :canonicalize-uris? false
+                                   :index-redirect?    false
+                                   :allow-symlinks?    false})
+      (send-gzipped-copy-when-there folder)
+      (add-cache-header files)))
+
+(def ^:private default-handler
+  ;; written out as reitit's own: no route and no file, 404; a route
+  ;; without the request's method, 405; a handler that answered nil, 406
+  (reitit/create-default-handler {:not-found          (constantly {:status 404 :headers {} :body ""})
+                                  :method-not-allowed (constantly {:status 405 :headers {} :body ""})
+                                  :not-acceptable     (constantly {:status 406 :headers {} :body ""})}))
 
 (defn make-ring-handler-from-routes
-  "The one Ring handler for the server, from reitit routes. With a
-   :files-folder (nil for none), a GET no route matches is answered from
-   that folder on disk, when it has the file. Otherwise a path that matches
-   no route answers 404, a method the route doesn't have 405."
-  [routes {:keys [files-folder]}]
+  "The one Ring handler for the server, from reitit routes. With :files
+   (nil for none), a GET no route matches is answered from its :folder on
+   disk, when it has the file. Otherwise a path that matches no route
+   answers 404, a method the route doesn't have 405."
+  [routes {:keys [files]}]
   (reitit/ring-handler (reitit/router routes)
-                       (if files-folder
-                         (reitit/routes (add-cache-header (send-gzipped-copy-when-there (reitit/create-file-handler {:path "/" :root files-folder}) files-folder))
-                                        (reitit/create-default-handler))
-                         (reitit/create-default-handler))))
+                       (if files
+                         (reitit/routes (make-file-handler files) default-handler)
+                         default-handler)))

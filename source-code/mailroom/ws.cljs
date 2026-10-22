@@ -5,10 +5,13 @@
    server goes to its handler, answers included."
   (:require
    [mailroom.messages :as messages]
+   [mailroom.settings :as settings]
    [mailroom.shapes :as shapes]
    [wire.api :as wire]))
 
-(defn- make-full-address [address]
+(defn- make-full-address
+  "The address on the page's own origin; wss when the page came over https."
+  [address]
   (str (if (= "https:" (.. js/location -protocol)) "wss://" "ws://") (.. js/location -host) address))
 
 (defn- hand-text!
@@ -25,24 +28,13 @@
     (set! (.-onclose websocket) #(when-not @closed? (js/setTimeout (fn [] (connect! line)) reopen-after-ms)))
     (reset! socket websocket)))
 
-(def options-shape
-  "open-ws-line!'s options, every key required. :reopen-after-ms: how long
-   it waits before it reopens a broken line."
-  [:map {:closed true}
-   [:reopen-after-ms [:int {:min 1}]]])
-
-(defn- check-options [options]
-  (when-let [errors (wire/find-errors-in-data-for-shape options-shape options)]
-    (throw (ex-info (str "The options have problems: " (pr-str errors))
-                    {:type :mailroom/bad-options :errors errors})))
-  options)
-
 (defn open-ws-line!
   "Opens the websocket; each named message, answers included, shaped by its
-   :answer-shape, goes to its handler. The options are checked first.
-   Returns the line."
+   :answer-shape, goes to its handler. The shapes and the options are
+   checked first. Returns the line."
   [address shapes-by-name handlers options]
-  (let [{:keys [reopen-after-ms]} (check-options options)]
+  (settings/check-shapes-by-name shapes-by-name)
+  (let [{:keys [reopen-after-ms]} (settings/check-ws-options options)]
     (doto {:socket (atom nil) :closed? (atom false) :address address :reopen-after-ms reopen-after-ms
            :shapes-by-name shapes-by-name :handlers handlers}
       connect!)))
@@ -50,7 +42,7 @@
 (defn send-message-on-ws-line!
   "Sends a named message on the line, by its :params-shape. Whether it was open."
   [{:keys [socket shapes-by-name]} message]
-  (let [open? (= 1 (.-readyState @socket))]
+  (let [open? (= js/WebSocket.OPEN (.-readyState @socket))]
     (when open? (.send @socket (wire/turn-data-into-json-text (shapes/turn-message-into-json-data shapes-by-name message))))
     open?))
 

@@ -9,8 +9,13 @@
    [mailroom.shapes :as shapes]))
 
 (def ^:private shapes-by-name
-  {:shops/total {:params-shape [:map [:shop/id :uuid]]
-                 :answer-shape [:map [:shop/id :uuid] [:total :decimal]]}})
+  {:shops/total     {:params-shape [:map [:shop/id :uuid]]
+                     :answer-shape [:map [:shop/id :uuid] [:total :decimal]]}
+   :greetings/hello {:params-shape nil :answer-shape nil}})
+
+(defn- find-problems [f]
+  (try (f) nil
+       (catch :default e (ex-data e))))
 
 (def ^:private shop-id "1d000000-0000-4000-8000-000000000001")
 
@@ -21,9 +26,12 @@
     (is (= :mailroom/bad-params
            (try (shapes/turn-message-into-json-data shapes-by-name {:shops/total {:shop/id shop-id :extra 1}})
                 (catch :default e (:type (ex-data e)))))))
-  (testing "a name without a shape passes as it is"
+  (testing "a name whose shape is nil, written out, passes as it is"
     (is (= {:greetings/hello {:name "Anna"}}
-           (shapes/turn-message-into-json-data shapes-by-name {:greetings/hello {:name "Anna"}})))))
+           (shapes/turn-message-into-json-data shapes-by-name {:greetings/hello {:name "Anna"}}))))
+  (testing "a name the shapes don't have: nothing is sent"
+    (is (= :mailroom/no-shapes
+           (:type (find-problems #(shapes/turn-message-into-json-data shapes-by-name {:nobody/home {}})))))))
 
 (deftest an-answer-comes-back-by-its-shape
   (let [answer (shapes/turn-answer-into-shaped-data shapes-by-name {:shops/total {:shop/id shop-id :total "120.50"}})]
@@ -31,7 +39,12 @@
         "fits its shape; in the browser an id and a decimal are their text (wire)"))
   (testing "an answer that doesn't fit stays as it came, with its errors"
     (let [answer (shapes/turn-answer-into-shaped-data shapes-by-name {:shops/total {:shop/id "seven" :total "1"}})]
-      (is (contains? (:shops/total answer) :mailroom/errors)))))
+      (is (contains? (:shops/total answer) :mailroom/errors))))
+  (testing "a name the shapes don't have: as it came, with its errors; notes pass"
+    (let [answer (shapes/turn-answer-into-shaped-data shapes-by-name {:nobody/home {:a 1} :mailroom/notes {:x 1}})]
+      (is (= {:a 1} (get-in answer [:nobody/home :data])))
+      (is (contains? (:nobody/home answer) :mailroom/errors))
+      (is (= {:x 1} (:mailroom/notes answer))))))
 
 (deftest a-named-message-finds-its-handler
   (let [heard (atom [])]
@@ -39,7 +52,16 @@
     (is (= [{:table "orders"}] @heard))))
 
 (deftest a-ws-line-is-told-when-to-reopen
-  (let [problems (try (mailroom.api/open-ws-line! "/mail/ws" shapes-by-name {} {})
-                      (catch :default e (ex-data e)))]
+  (let [problems (find-problems #(mailroom.api/open-ws-line! "/mail/ws" shapes-by-name {} {}))]
     (is (= :mailroom/bad-options (:type problems)) "no :reopen-after-ms: refused before any socket opens")
     (is (contains? (:errors problems) :reopen-after-ms))))
+
+(deftest an-sse-line-says-its-on-open
+  (let [problems (find-problems #(mailroom.api/open-sse-line! "/mail/sse" shapes-by-name {} {}))]
+    (is (= :mailroom/bad-options (:type problems)) "no :on-open, not even nil: refused before the line opens")
+    (is (contains? (:errors problems) :on-open))))
+
+(deftest each-name-says-both-shapes
+  (let [problems (find-problems #(mailroom.api/send-message! "/mail/http" {:shops/total {:params-shape nil}} {:shops/total {}}))]
+    (is (= :mailroom/bad-shapes (:type problems)) "refused before anything is sent")
+    (is (= #{:answer-shape} (set (keys (:shops/total (:errors problems))))))))

@@ -7,12 +7,20 @@
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
 (def ^:private handlers
-  {:greetings/hello {:steps [{:name :say-hello :enter #(mailroom/add-answer-to-context % "hello")}]}})
+  {:greetings/hello {:steps        [{:name :say-hello :enter #(mailroom/add-answer-to-context % "hello")}]
+                     :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil}})
+
+(def ^:private options
+  {:find-rate-limit-key #(mailroom/find-client-address % nil)
+   :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (def ^:private settings
-  {:ip "127.0.0.1" :port 0 :client-address-header nil
+  {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
+   :client-address-header nil :server-header nil
+   :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
-   :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+   :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
+   :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
    :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private pages
@@ -31,11 +39,9 @@
 (deftest an-address-leads-to-its-pipe-or-its-page
   (let [server (mailroom/start-server!
                 (mailroom/make-ring-handler-from-routes
-                 (into (mailroom/make-routes-for-messages handlers settings {:find-rate-limit-key #(mailroom/find-client-address % nil)
-                                                                                       :on-sse-open nil :on-sse-close nil
-                                                                                       :on-ws-open nil :on-ws-close nil})
+                 (into (mailroom/make-routes-for-messages handlers settings options)
                        (mailroom/make-server-routes-for-pages pages page-handler))
-                 {:files-folder nil})
+                 {:files nil})
                 settings)
         port   (:port server)]
     (try
@@ -47,6 +53,41 @@
         (is (= 404 (first (send-request port "GET" "/nowhere" nil)))))
       (finally (mailroom/stop-server! server)))))
 
-(deftest a-page-needs-a-namespaced-name-and-an-address
-  (is (thrown? clojure.lang.ExceptionInfo (mailroom/make-server-routes-for-pages {:page {:address "/x"}} page-handler)))
-  (is (thrown? clojure.lang.ExceptionInfo (mailroom/make-server-routes-for-pages {:orders/page {}} page-handler))))
+(deftest a-page-needs-a-namespaced-name-an-address-and-a-title
+  (let [{:keys [type errors]} (try (mailroom/make-server-routes-for-pages {:page {:address "/x" :title nil} :orders/page {}} page-handler)
+                                   (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+    (is (= :mailroom/bad-pages type))
+    (is (contains? errors :page) "a name without a namespace")
+    (is (= #{:address :title} (set (keys (:orders/page errors)))) "each missing key, named"))
+  (is (= 1 (count (mailroom/make-server-routes-for-pages {:orders/page {:address "/orders" :title nil}} page-handler)))
+      "a title of nil, written out: the app sets the title itself"))
+
+(defn- make-files-folder []
+  (let [folder (.toFile (java.nio.file.Files/createTempDirectory "mailroom-files" (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (doseq [[path text] {"main.3F9A0C1D.js" "hashed" "main.3F9A.js" "short" "app.css" "plain" "docs/index.html" "index"}]
+      (let [file (java.io.File. folder ^String path)]
+        (.mkdirs (.getParentFile file))
+        (spit file text)))
+    (str folder)))
+
+(deftest files-are-cached-by-the-options
+  (let [folder  (make-files-folder)
+        handler (mailroom/make-ring-handler-from-routes [] {:files {:folder                     folder
+                                                                    :hashed-name-min-hex-digits 8
+                                                                    :hashed-file-cache-seconds  600}})
+        get-file #(handler {:request-method :get :uri % :headers {}})]
+    (testing "a hashed name: kept as long as the option says"
+      (is (= "public, max-age=600, immutable" (get-in (get-file "/main.3F9A0C1D.js") [:headers "cache-control"]))))
+    (testing "fewer hex digits than the option: not hashed, asked again each time"
+      (is (= "no-cache" (get-in (get-file "/main.3F9A.js") [:headers "cache-control"])))
+      (is (= "no-cache" (get-in (get-file "/app.css") [:headers "cache-control"]))))
+    (testing "a file by its exact name only: a folder's address is no file"
+      (is (= 404 (:status (get-file "/docs/"))))
+      (is (= 404 (:status (get-file "/docs"))))
+      (is (= 200 (:status (get-file "/docs/index.html")))))))
+
+(deftest the-files-options-are-written-out
+  (is (= :mailroom/bad-options
+         (try (mailroom/make-ring-handler-from-routes [] {:files {:folder "x"}})
+              (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))
+  (is (fn? (mailroom/make-ring-handler-from-routes [] {:files nil}))))

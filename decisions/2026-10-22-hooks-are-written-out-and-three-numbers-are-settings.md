@@ -1,5 +1,7 @@
 # The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings
 
+> **Changed in part** by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, v0.1.2): `stop-server!`'s two fixed waits after `:stop-wait-ms` are one setting, `:stop-wait-after-cut-ms`; the settings grow by seven more keys.
+
 > Changes in part [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md): the four hooks are no longer optional, and three of the numbers it kept as constants are settings. Since v0.1.1.
 
 **Decision:**

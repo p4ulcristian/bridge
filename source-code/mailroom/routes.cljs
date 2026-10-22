@@ -5,9 +5,12 @@
    the server, in the page, already checked there."
   (:require
    [reitit.frontend :as reitit]
-   [reitit.frontend.easy :as easy]))
+   [reitit.frontend.easy :as easy]
+   [reitit.frontend.history :as history]))
 
-(defn- set-tab-title! [match]
+(defn- set-tab-title!
+  "A page's :title, nil when the app sets the title itself."
+  [match]
   (when-let [title (get-in match [:data :title])]
     (set! (.-title js/document) title)))
 
@@ -24,20 +27,27 @@
 
 (defn start-following-address!
   "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
-   now and on every move, nil for an address no page has."
+   now and on every move, nil for an address no page has. The addresses
+   are real paths, which the server answers too (no #fragment); a plain
+   click on a link to a page moves without a reload, while a click with a
+   modifier key, to another target or another origin, does what the
+   browser does."
   [pages on-page]
   (easy/start! (reitit/router (turn-pages-into-reitit-routes pages))
                (fn [match _history]
                  (set-tab-title! match)
                  (on-page (turn-match-into-page match)))
-               {:use-fragment false}))
+               {:use-fragment         false
+                :ignore-anchor-click? history/ignore-anchor-click?}))
 
 (defn go-to-page!
-  "Moves to the page with this name and these path params; Back returns."
-  ([page-name] (go-to-page! page-name {}))
-  ([page-name path-params] (easy/push-state page-name path-params)))
+  "Moves to the page with this name and these path params, {} for none;
+   Back returns."
+  [page-name path-params]
+  (easy/push-state page-name path-params))
 
 (defn make-address-of-page
-  "A page's address, for a link: (make-address-of-page :orders/page {:order-id 42}) -> \"/orders/42\"."
-  ([page-name] (make-address-of-page page-name {}))
-  ([page-name path-params] (easy/href page-name path-params)))
+  "A page's address, for a link, with its path params, {} for none:
+   (make-address-of-page :orders/page {:order-id 42}) -> \"/orders/42\"."
+  [page-name path-params]
+  (easy/href page-name path-params))

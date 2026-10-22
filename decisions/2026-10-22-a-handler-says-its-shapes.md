@@ -1,5 +1,7 @@
 # A handler says its shapes
 
+> **Changed in part** by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (2026-10-22, v0.1.2): a handler writes out both shapes, nil where the data passes as it is, and so does the browser for every name; a name the browser's shapes don't have no longer passes as it is.
+
 > Adds to [Named messages over three addresses Groundwork owns](2026-10-22-named-messages-over-three-addresses.md).
 
 **Decision:** a handler may say a `:params-shape` and an `:answer-shape`, the same two a background job kind has:

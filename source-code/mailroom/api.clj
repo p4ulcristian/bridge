@@ -12,11 +12,18 @@
    on; the answer has the same names. A handler's :steps are its work, a
    list of steps over one map, the context (run-steps-until-answered):
 
-     (def handlers {:orders/of-shop {:steps [find-orders-of-shop add-orders-answer]}})
+     (def handlers {:orders/of-shop {:steps        [find-orders-of-shop add-orders-answer]
+                                     :params-shape [:map [:shop/id :uuid]]
+                                     :answer-shape [:vector [:map [:order/id :uuid]]]
+                                     :rate-limit   nil
+                                     :run-steps-in nil}})
 
-     (def settings {:ip \"0.0.0.0\" :port 8080 :client-address-header nil
+     (def settings {:ip \"0.0.0.0\" :port 8080 :proxy-protocol :disable
+                    :client-address-header nil :server-header nil
+                    :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
                     :addresses {:http \"/mail/http\" :sse \"/mail/sse\" :ws \"/mail/ws\"}
-                    :ping-every-ms 25000 :stop-wait-ms 10000 :ws-reopen-after-ms 1000
+                    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
+                    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                     :rate-limit-buckets-before-cleanup 10000})
 
      (mailroom/start-server!
@@ -25,11 +32,12 @@
         handlers settings
         {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
          :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
-       {:files-folder nil})
+       {:files nil})
       settings)
 
-   Nothing has a default: the settings (settings-shape) and the options are
-   checked first, and a missing one refuses, named.
+   Nothing has a default: the settings (settings-shape), the handlers and
+   the options are checked first, every key written out, nil where nothing
+   applies; a missing one refuses, named, with every other problem at once.
 
    A line (an open sse or ws connection) is
    {:mailroom/channel … :mailroom/request …}."
@@ -46,18 +54,28 @@
    [org.httpkit.server :as http-kit]))
 
 (def settings-shape
-  "The settings, every key required, as a malli shape:
-   {:ip :port :client-address-header :addresses {:http :sse :ws} :ping-every-ms
-    :stop-wait-ms :ws-reopen-after-ms :rate-limit-buckets-before-cleanup}.
-   :client-address-header: behind a proxy, the header it puts the asker's
-   address in (\"cf-connecting-ip\", \"x-forwarded-for\"); nil when the
-   server faces browsers itself. :ping-every-ms: how often an idle sse line
-   gets a comment and a ws line {:mailroom/ping {}}, so proxies don't cut
-   them. :stop-wait-ms: how long stop-server! lets running requests finish.
-   :ws-reopen-after-ms: how long the browser waits before it reopens a
-   broken ws line; the app hands it to the browser with the addresses.
-   :rate-limit-buckets-before-cleanup: above this many rate-limit buckets
-   (one per message name and asker) in memory, the full ones are dropped."
+  "The settings, every key required, as a malli shape, the map closed:
+   {:ip :port :proxy-protocol :client-address-header :server-header
+    :max-body-bytes :max-header-line-bytes :max-ws-message-bytes
+    :addresses {:http :sse :ws} :ping-every-ms :sse-reconnect-after-ms
+    :ws-reopen-after-ms :stop-wait-ms :stop-wait-after-cut-ms
+    :rate-limit-buckets-before-cleanup}.
+   :proxy-protocol: :disable, :enable or :optional, for a load balancer
+   that speaks the PROXY protocol. :client-address-header: behind a proxy,
+   the header it puts the asker's address in (\"cf-connecting-ip\",
+   \"x-forwarded-for\"); nil when the server faces browsers itself.
+   :server-header: the Server header, nil for none. :max-body-bytes,
+   :max-header-line-bytes, :max-ws-message-bytes: the largest request body,
+   request or header line, and ws message taken. :ping-every-ms: how often
+   an idle sse line gets a comment and a ws line {:mailroom/ping {}}, so
+   proxies don't cut them. :sse-reconnect-after-ms: how long the browser
+   waits before it reopens a broken sse line, sent on the line (retry:).
+   :ws-reopen-after-ms: the same for ws; the app hands it to the browser
+   with the addresses. :stop-wait-ms: how long stop-server! lets running
+   requests finish; :stop-wait-after-cut-ms: how long it then waits for the
+   cut ones' threads to end. :rate-limit-buckets-before-cleanup: above this
+   many rate-limit buckets (one per message name and asker) in memory, the
+   full ones are dropped."
   settings/settings-shape)
 
 (defn find-client-address
@@ -68,20 +86,24 @@
 
 (defn make-routes-for-messages
   "The three routes, at the settings' :addresses, as reitit data, for
-   make-ring-handler-from-routes. Options: :find-rate-limit-key, required,
-   (fn [request]) telling askers apart for the handlers' :rate-limit
-   ({:max 10 :per-ms 60000}; over it, \"Too many requests.\"), such as
-   find-client-address with the settings' :client-address-header; and
-   :on-sse-open, :on-sse-close, :on-ws-open, :on-ws-close, each required,
-   (fn [line]) or nil when nothing runs then. The settings and the options
-   are checked first: every problem at once."
+   make-ring-handler-from-routes. Each handler says, every key written out:
+   :steps; :params-shape and :answer-shape (nil: the data passes as it is);
+   :rate-limit, {:max 10 :per-ms 60000} per asker (over it, \"Too many
+   requests.\"), nil for none; :run-steps-in, (fn [run context]), nil for
+   none. Options, each required: :find-rate-limit-key, (fn [request])
+   telling askers apart, such as find-client-address with the settings'
+   :client-address-header; :on-sse-open, :on-sse-close, :on-ws-open,
+   :on-ws-close, each (fn [line]) or nil when nothing runs then. The
+   settings, the handlers and the options are checked first: every problem
+   at once."
   [handlers settings options]
   (settings/check-settings settings)
+  (settings/check-handlers handlers)
   (settings/check-routes-options options)
   (let [{:keys [addresses ping-every-ms rate-limit-buckets-before-cleanup]} settings
         limiter (limits/make-limiter (:find-rate-limit-key options) rate-limit-buckets-before-cleanup)]
     [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers limiter)}}]
-     [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse ping-every-ms options)}}]
+     [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse settings options)}}]
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
 
 (defn start-server!
@@ -94,15 +116,18 @@
 
 (defn stop-server!
   "Stops taking requests, lets running ones finish (up to the settings'
-   :stop-wait-ms), then stops."
+   :stop-wait-ms), cuts the ones left and waits for their threads (up to
+   :stop-wait-after-cut-ms), then returns whether every request's thread
+   had ended."
   [server]
   (server/stop-server! server))
 
 (defn send-message-on-sse-line!
-  "Writes a named message into an open sse line; an id comes back as
-   Last-Event-ID when the browser reconnects. Whether the line was open."
-  ([line message] (sse/send-message-on-sse-line! line message))
-  ([line message id] (sse/send-message-on-sse-line! line message id)))
+  "Writes a named message into an open sse line with its id, nil written
+   out for none; an id comes back as Last-Event-ID when the browser
+   reconnects. Whether the line was open."
+  [line message id]
+  (sse/send-message-on-sse-line! line message id))
 
 (defn send-message-on-ws-line!
   "Sends a named message on an open ws line. Whether it was open."
@@ -116,27 +141,36 @@
 
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a
-   server: for tests and the REPL. request is the Ring request it came with
-   (its cookie, its origin). Notes, when a handler has them, are beside the
-   answers under :mailroom/notes."
-  [handlers request message]
-  (messages/answer-named-messages handlers request message))
+   server: for tests and the REPL. rate-limits is :no-rate-limits, written
+   out: the server's limiter counts a handler's :rate-limit, and here there
+   is none. request is the Ring request it came with (its cookie, its
+   origin). Notes, when a handler has them, are beside the answers under
+   :mailroom/notes. The handlers are checked first."
+  [handlers rate-limits request message]
+  (settings/check-handlers handlers)
+  (settings/check-rate-limits-outside-a-server rate-limits)
+  (messages/answer-named-messages handlers rate-limits request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Routes
 
 (defn make-server-routes-for-pages
   "A GET route for each page, answered by page-handler, so a page opened
-   fresh or reloaded works."
+   fresh or reloaded works. Each page has a namespaced name, an :address
+   and a :title (nil when the app sets the title itself); they are checked
+   first, every problem at once (:mailroom/bad-pages)."
   [pages page-handler]
   (routes/make-server-routes-for-pages pages page-handler))
 
 (defn make-ring-handler-from-routes
-  "The one Ring handler, from reitit routes. Options: :files-folder,
-   required, a folder on disk a GET no route matches is answered from (the
-   browser's code and styles), or nil for none: a file whose name is hashed
-   (main.3F9A….js) is cached for a year, any other asked again each time.
-   No route and no file: 404; a method the route doesn't have: 405."
+  "The one Ring handler, from reitit routes. Options: :files, required, nil
+   for none, or where a GET no route matches is answered from (the
+   browser's code and styles), every key required: :folder on disk;
+   :hashed-name-min-hex-digits, how many hex digits before the extension
+   make a name hashed (main.3F9A0C1D.js); :hashed-file-cache-seconds, how
+   long a hashed file is kept; any other file is asked again each time.
+   A file is served by its exact name only. No route and no file: 404; a
+   method the route doesn't have: 405."
   [routes options]
   (routes/make-ring-handler-from-routes routes (settings/check-ring-handler-options options)))
 
