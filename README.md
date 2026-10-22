@@ -140,7 +140,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
             :meter               meter          ; the app's (meter's): mailroom's metrics are declared on it here
             :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
-            :on-sse-close        forget-line!
+            :on-sse-close        forget-line!   ; once a line; a browser gone is seen by the next ping
             :on-ws-open          nil
             :on-ws-close         nil})
           (mailroom/make-server-routes-for-pages pages page-handler))

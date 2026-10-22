@@ -74,6 +74,7 @@
   (:require
    [logbook.api :as logbook]
    [mailroom.answers :as answers]
+   [mailroom.channel :as channel]
    [mailroom.http :as http]
    [mailroom.limits :as limits]
    [mailroom.messages :as messages]
@@ -83,8 +84,7 @@
    [mailroom.settings :as settings]
    [mailroom.sse :as sse]
    [mailroom.steps :as steps]
-   [mailroom.ws :as ws]
-   [org.httpkit.server :as http-kit]))
+   [mailroom.ws :as ws]))
 
 (def settings-shape
   "The settings, every key required, as a malli shape, the map closed:
@@ -135,7 +135,9 @@
    :find-rate-limit-key, (fn [request])
    telling askers apart, such as find-client-address with the settings'
    :client-address-header; :on-sse-open, :on-sse-close, :on-ws-open,
-   :on-ws-close, each (fn [line]) or nil when nothing runs then. The
+   :on-ws-close, each (fn [line]) or nil when nothing runs then; each
+   close hook runs once for a line, and an sse line the browser left is
+   seen as closed at the latest at its next ping (:ping-every-ms). The
    settings, the handlers and the options are checked first: every problem
    at once."
   [handlers settings options]
@@ -186,9 +188,10 @@
   (ws/send-message-on-ws-line! line message))
 
 (defn is-line-open?
-  "Whether an sse or ws line is still open."
+  "Whether an sse or ws line is still open: not closed, and its socket
+   not closed by the browser leaving."
   [line]
-  (http-kit/open? (:mailroom/channel line)))
+  (channel/is-channel-open? (:mailroom/channel line)))
 
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a

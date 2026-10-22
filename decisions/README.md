@@ -2,7 +2,7 @@
 
 One file per decision: `YYYY-MM-DD-what-we-decided.md`. The title is the decision. Each file says what we decided, why, and what we chose against. A decision changes by a new file; the old one says so at the top (`Replaced by` or `Changed in part by`), and nothing else in it is rewritten.
 
-All but the last six were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork is now house, the part of manor (the group of libraries this one belongs to) that puts them together; the decisions that stayed with Groundwork are in house's `decisions/`.
+All but the last seven were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork is now house, the part of manor (the group of libraries this one belongs to) that puts them together; the decisions that stayed with Groundwork are in house's `decisions/`.
 
 ## In force
 
@@ -27,7 +27,8 @@ All but the last six were made while mailroom was three libraries inside Groundw
 - [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md)
 - [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md)
 - [A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
-- [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md)
+- [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
+- [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
 
 ## Replaced
 

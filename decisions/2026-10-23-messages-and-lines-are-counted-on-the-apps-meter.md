@@ -1,3 +1,5 @@
+> **Changed in part** by [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md) (2026-10-23, v0.7.1): an sse line a browser leaves is counted out at its next ping or send, at most one `:ping-every-ms` later.
+
 # Each message and open line is counted on the app's meter
 
 > Changes in part [Every value that sets behaviour is a setting](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (the settings gain `:metric-buckets`) and [The app passes its log](2026-10-22-the-app-passes-its-log.md) (`make-routes-for-messages`' options gain `:meter`). Since v0.7.0, on meter v0.1.2.

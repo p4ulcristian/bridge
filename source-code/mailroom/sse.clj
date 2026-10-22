@@ -17,9 +17,12 @@
    written by."
   (:require
    [clojure.string :as str]
+   [mailroom.channel :as channel]
    [mailroom.metrics :as metrics]
    [wire.api :as wire]
-   [org.httpkit.server :as http-kit]))
+   [org.httpkit.server :as http-kit])
+  (:import
+   (java.util.concurrent.atomic AtomicBoolean)))
 
 (def ^:private stream-response
   {:status  200
@@ -34,10 +37,33 @@
    :mailroom/last-event-id (get-in request [:headers "last-event-id"])
    :mailroom/wire          wire})
 
-(defn- keep-pinging! [channel ping-every-ms]
+(defn- close-line-once!
+  "Counts the line out of the open ones and runs (on-sse-close line), once
+   for each line: http-kit's :on-close and a ping that finds the browser
+   gone may both come."
+  [^AtomicBoolean closed? meter on-sse-close line]
+  (when (.compareAndSet closed? false true)
+    (metrics/add-to-open-lines! meter :sse -1)
+    (when on-sse-close (on-sse-close line))))
+
+(defn- close-if-browser-left!
+  "Whether the line is open. A line whose socket is closed (the browser
+   left, and http-kit 2.8.1 didn't say so) is closed now: http-kit's close
+   runs its :on-close, and the line is counted out and on-sse-close runs."
+  [channel]
+  (or (channel/is-channel-open? channel)
+      (do (http-kit/close channel)
+          false)))
+
+(defn- keep-pinging!
+  "Every ping-every-ms, a comment line; a line the browser has left is
+   closed instead, so it lives at most one ping-every-ms after it is left.
+   Stops once the line is closed."
+  [channel ping-every-ms]
   (Thread/startVirtualThread
    #(while (do (Thread/sleep (long ping-every-ms))
-               (http-kit/send! channel ": ping\n\n" false)))))
+               (and (close-if-browser-left! channel)
+                    (http-kit/send! channel ": ping\n\n" false))))))
 
 (defn- open-line! [request {:keys [ping-every-ms sse-reconnect-after-ms]} {:keys [wire meter on-sse-open]} channel]
   (metrics/add-to-open-lines! meter :sse 1)
@@ -50,15 +76,17 @@
   "A Ring handler that opens a line and keeps it open: it tells the browser
    to wait :sse-reconnect-after-ms before it reopens a broken line, pings it
    every :ping-every-ms, and calls (on-sse-open line) when it opens,
-   (on-sse-close line) when it closes. Each line carries the options' :wire,
-   and is among the open lines on the options' :meter while it is open."
+   (on-sse-close line) once when it closes: closed by the server, or left
+   by the browser, seen at the latest by the next ping or send. Each line
+   carries the options' :wire, and is among the open lines on the options'
+   :meter while it is open."
   [settings {:keys [wire meter on-sse-close] :as options}]
   (fn [request]
-    (http-kit/as-channel request
-                         {:on-open  #(open-line! request settings options %)
-                          :on-close (fn [channel _status]
-                                      (metrics/add-to-open-lines! meter :sse -1)
-                                      (when on-sse-close (on-sse-close (make-line wire channel request))))})))
+    (let [closed? (AtomicBoolean.)]
+      (http-kit/as-channel request
+                           {:on-open  #(open-line! request settings options %)
+                            :on-close (fn [channel _status]
+                                        (close-line-once! closed? meter on-sse-close (make-line wire channel request)))}))))
 
 (defn turn-message-into-sse-text
   "A named message and its id (nil for none) as the lines of one sse
@@ -71,6 +99,8 @@
 (defn send-message-on-sse-line!
   "Writes a named message into an open line with its id, nil for none; an
    id comes back as Last-Event-ID when the browser reconnects. Whether it
-   was still open."
+   was still open; a line the browser has left is closed now."
   [line message id]
-  (http-kit/send! (:mailroom/channel line) (turn-message-into-sse-text (:mailroom/wire line) message id) false))
+  (let [channel (:mailroom/channel line)]
+    (and (close-if-browser-left! channel)
+         (http-kit/send! channel (turn-message-into-sse-text (:mailroom/wire line) message id) false))))

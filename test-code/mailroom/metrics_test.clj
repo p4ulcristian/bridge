@@ -84,8 +84,9 @@
                  (find-metric-lines meter "mailroom_open_lines"))))
         (.join (.sendClose socket 1000 "done"))
         (.close sse)
-        ;; only ws: http-kit 2.8.1 calls no :on-close when a browser leaves an
-        ;; sse line (its server closes the socket, but tells an older channel)
+        ;; only ws here: http-kit 2.8.1 calls no :on-close when a browser
+        ;; leaves an sse line, so mailroom sees it at the next ping, 25 s away
+        ;; here (mailroom.sse-close-test)
         (wait-until #(= "mailroom_open_lines{pipe=\"ws\"} 0" (second (find-metric-lines meter "mailroom_open_lines"))))
         (testing "and no longer once closed"
           (is (= "mailroom_open_lines{pipe=\"ws\"} 0" (second (find-metric-lines meter "mailroom_open_lines"))))))
