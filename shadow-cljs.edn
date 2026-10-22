@@ -1,0 +1,6 @@
+;; The browser tests, headless on node: npx shadow-cljs compile test
+{:deps   {:aliases [:cljs]}
+ :builds {:test {:target    :node-test
+                 :output-to "out/node-tests.js"
+                 :ns-regexp "-test$"
+                 :autorun   true}}}

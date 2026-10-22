@@ -1,0 +1,14 @@
+{
+  "name": "mailroom",
+  "private": true,
+  "description": "mailroom's ClojureScript test build; big.js comes for wire's exact decimals",
+  "scripts": {
+    "test": "shadow-cljs compile test"
+  },
+  "dependencies": {
+    "big.js": "7.0.1"
+  },
+  "devDependencies": {
+    "shadow-cljs": "3.5.7"
+  }
+}
