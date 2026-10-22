@@ -12,7 +12,9 @@
      data: {\"bells/changed\":{\"table\":\"orders\",\"ids\":[\"42\"]}}
 
    A browser that reconnects sends the last id it got as Last-Event-ID; the
-   line has it as :mailroom/last-event-id, to catch up from."
+   line has it as :mailroom/last-event-id, to catch up from. The line
+   carries the app's wire too, :mailroom/wire, which its messages are
+   written by."
   (:require
    [clojure.string :as str]
    [wire.api :as wire]
@@ -25,40 +27,41 @@
              ;; nginx and some proxies hold a response back unless told not to
              "x-accel-buffering" "no"}})
 
-(defn- make-line [channel request]
+(defn- make-line [wire channel request]
   {:mailroom/channel       channel
    :mailroom/request       request
-   :mailroom/last-event-id (get-in request [:headers "last-event-id"])})
+   :mailroom/last-event-id (get-in request [:headers "last-event-id"])
+   :mailroom/wire          wire})
 
 (defn- keep-pinging! [channel ping-every-ms]
   (Thread/startVirtualThread
    #(while (do (Thread/sleep (long ping-every-ms))
                (http-kit/send! channel ": ping\n\n" false)))))
 
-(defn- open-line! [request {:keys [ping-every-ms sse-reconnect-after-ms]} {:keys [on-sse-open]} channel]
+(defn- open-line! [request {:keys [ping-every-ms sse-reconnect-after-ms]} {:keys [wire on-sse-open]} channel]
   ;; a retry: field alone sets the browser's wait and is no message
   (http-kit/send! channel (assoc stream-response :body (str "retry: " sse-reconnect-after-ms "\n\n")) false)
   (keep-pinging! channel ping-every-ms)
-  (when on-sse-open (on-sse-open (make-line channel request))))
+  (when on-sse-open (on-sse-open (make-line wire channel request))))
 
 (defn make-ring-handler-for-sse
   "A Ring handler that opens a line and keeps it open: it tells the browser
    to wait :sse-reconnect-after-ms before it reopens a broken line, pings it
    every :ping-every-ms, and calls (on-sse-open line) when it opens,
-   (on-sse-close line) when it closes."
-  [settings {:keys [on-sse-close] :as options}]
+   (on-sse-close line) when it closes. Each line carries the options' :wire."
+  [settings {:keys [wire on-sse-close] :as options}]
   (fn [request]
     (http-kit/as-channel request
                          {:on-open  #(open-line! request settings options %)
                           :on-close (fn [channel _status]
-                                      (when on-sse-close (on-sse-close (make-line channel request))))})))
+                                      (when on-sse-close (on-sse-close (make-line wire channel request))))})))
 
 (defn turn-message-into-sse-text
   "A named message and its id (nil for none) as the lines of one sse
-   event: \"id: 17\\ndata: {…}\\n\\n\"."
-  [message id]
+   event: \"id: 17\\ndata: {…}\\n\\n\", written by the wire."
+  [wire message id]
   (str (when id (str "id: " id "\n"))
-       (str/join (map #(str "data: " % "\n") (str/split-lines (wire/turn-data-into-json-text message))))
+       (str/join (map #(str "data: " % "\n") (str/split-lines (wire/turn-data-into-json-text wire message))))
        "\n"))
 
 (defn send-message-on-sse-line!
@@ -66,4 +69,4 @@
    id comes back as Last-Event-ID when the browser reconnects. Whether it
    was still open."
   [line message id]
-  (http-kit/send! (:mailroom/channel line) (turn-message-into-sse-text message id) false))
+  (http-kit/send! (:mailroom/channel line) (turn-message-into-sse-text (:mailroom/wire line) message id) false))

@@ -3,7 +3,9 @@
    sends is answered by the same handlers as http, and the answer sent back
    on the line; the server can also send on a line by itself. Every
    :ping-every-ms (a setting) the server sends {\"mailroom/ping\":{}}, so a
-   proxy never sees the line idle and cuts it; the browser drops it."
+   proxy never sees the line idle and cuts it; the browser drops it. Every
+   message is read and written by the app's wire, which the line carries,
+   :mailroom/wire."
   (:require
    [mailroom.messages :as messages]
    [wire.api :as wire]
@@ -12,35 +14,37 @@
 (def ^:private not-a-websocket
   {:status 400 :headers {"content-type" "text/plain"} :body "This address is a websocket."})
 
-(defn- make-line [channel request]
-  {:mailroom/channel channel :mailroom/request request})
+(defn- make-line [wire channel request]
+  {:mailroom/channel channel :mailroom/request request :mailroom/wire wire})
 
 (defn send-message-on-ws-line!
   "Sends a named message as JSON on an open line. Whether it was still open."
   [line message]
-  (http-kit/send! (:mailroom/channel line) (wire/turn-data-into-json-text message)))
+  (http-kit/send! (:mailroom/channel line) (wire/turn-data-into-json-text (:mailroom/wire line) message)))
 
-(defn- answer-on-line! [handlers limiter line text]
-  (let [message (wire/turn-json-text-into-data text)]
-    (send-message-on-ws-line! line (messages/answer-named-messages handlers limiter (:mailroom/request line) message))))
+(defn- answer-on-line! [handlers limiter {wire :mailroom/wire :as line} text]
+  (let [message (wire/turn-json-text-into-data wire text)]
+    (send-message-on-ws-line! line (messages/answer-named-messages wire handlers limiter (:mailroom/request line) message))))
 
-(defn- keep-pinging! [channel ping-every-ms]
-  (Thread/startVirtualThread
-   #(while (do (Thread/sleep (long ping-every-ms))
-               (http-kit/send! channel (wire/turn-data-into-json-text {:mailroom/ping {}}))))))
+(defn- keep-pinging! [wire channel ping-every-ms]
+  (let [ping (wire/turn-data-into-json-text wire {:mailroom/ping {}})]
+    (Thread/startVirtualThread
+     #(while (do (Thread/sleep (long ping-every-ms))
+                 (http-kit/send! channel ping))))))
 
-(defn- open-websocket [request handlers limiter ping-every-ms {:keys [on-ws-open on-ws-close]}]
+(defn- open-websocket [request handlers limiter ping-every-ms {:keys [wire on-ws-open on-ws-close]}]
   (http-kit/as-channel request
                        {:on-open    (fn [channel]
-                                      (keep-pinging! channel ping-every-ms)
-                                      (when on-ws-open (on-ws-open (make-line channel request))))
-                        :on-receive #(answer-on-line! handlers limiter (make-line %1 request) %2)
+                                      (keep-pinging! wire channel ping-every-ms)
+                                      (when on-ws-open (on-ws-open (make-line wire channel request))))
+                        :on-receive #(answer-on-line! handlers limiter (make-line wire %1 request) %2)
                         :on-close   (fn [channel _status]
-                                      (when on-ws-close (on-ws-close (make-line channel request))))}))
+                                      (when on-ws-close (on-ws-close (make-line wire channel request))))}))
 
 (defn make-ring-handler-for-ws
   "A Ring handler that upgrades to a websocket answering named messages,
-   pinging it every ping-every-ms. A request that isn't a websocket gets 400."
+   pinging it every ping-every-ms, by the options' :wire. A request that
+   isn't a websocket gets 400."
   [handlers limiter ping-every-ms options]
   (fn [request]
     (if (:websocket? request)

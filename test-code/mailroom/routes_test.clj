@@ -1,7 +1,8 @@
 (ns mailroom.routes-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [mailroom.api :as mailroom])
+   [mailroom.api :as mailroom]
+   [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
@@ -11,7 +12,8 @@
                      :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil}})
 
 (def ^:private options
-  {:find-rate-limit-key #(mailroom/find-client-address % nil)
+  {:wire                wire
+   :find-rate-limit-key #(mailroom/find-client-address % nil)
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (def ^:private settings

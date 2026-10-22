@@ -2,7 +2,8 @@
   (:require
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
-   [mailroom.api :as mailroom])
+   [mailroom.api :as mailroom]
+   [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers WebSocket$Listener)))
@@ -27,7 +28,8 @@
    :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private options
-  {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+  {:wire                wire
+   :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (defn- make-handler
@@ -149,13 +151,17 @@
 
 (deftest answer-message-says-there-are-no-rate-limits
   (let [limited {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
-        ask     #(mailroom/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}})]
+        ask     #(mailroom/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}} {:wire wire})]
     (is (= [{:greetings/hello {:hello "Anna"}} {:greetings/hello {:hello "Anna"}}] [(ask) (ask)])
         "outside a server nothing counts, and the call says so"))
   (is (= :mailroom/bad-options
-         (try (mailroom/answer-message handlers nil {} {:greetings/hello {:name "Anna"}})
+         (try (mailroom/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire})
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
-      "nil is not a choice: :no-rate-limits is written out"))
+      "nil is not a choice: :no-rate-limits is written out")
+  (let [{:keys [type errors]} (try (mailroom/answer-message handlers :no-rate-limits {} {:greetings/hello {:name "Anna"}} {})
+                                   (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+    (is (= :mailroom/bad-options type) "mailroom makes no wire: the caller hands its own in")
+    (is (contains? errors :wire))))
 
 (deftest stop-lets-a-running-request-finish-then-returns
   (let [started  (promise)

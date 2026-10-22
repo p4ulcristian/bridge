@@ -36,9 +36,9 @@
    :mailroom/message-name message-name
    :mailroom/message-data message-data})
 
-(defn- turn-params-into-shaped-data-or-errors [{:keys [params-shape]} json-data]
+(defn- turn-params-into-shaped-data-or-errors [wire {:keys [params-shape]} json-data]
   (if params-shape
-    (wire/turn-json-data-into-shaped-data-or-errors params-shape json-data)
+    (wire/turn-json-data-into-shaped-data-or-errors wire params-shape json-data)
     {:shaped-data json-data}))
 
 (def ^:private answer-doesnt-fit
@@ -48,9 +48,9 @@
   "The answer as JSON data by its :answer-shape, checked against it with
    every map closed: an answer with a key the shape doesn't name is never
    sent (an extra column, a password hash)."
-  [{:keys [answer-shape]} answer]
+  [wire {:keys [answer-shape]} answer]
   (if answer-shape
-    (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors answer-shape answer)]
+    (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors wire answer-shape answer)]
       (if errors answer-doesnt-fit json-data))
     answer))
 
@@ -76,13 +76,13 @@
 
 (defn- run-handler
   "{:answer … :notes …} for one named message."
-  [handler request message-name json-data]
-  (let [{:keys [shaped-data errors]} (turn-params-into-shaped-data-or-errors handler json-data)]
+  [wire handler request message-name json-data]
+  (let [{:keys [shaped-data errors]} (turn-params-into-shaped-data-or-errors wire handler json-data)]
     (if errors
       {:answer {:errors errors}}
       (let [context (run-steps handler (make-context request message-name shaped-data))
             answer  (:mailroom/answer context)]
-        {:answer (if (is-only-an-error? answer) answer (turn-answer-into-json-data handler answer))
+        {:answer (if (is-only-an-error? answer) answer (turn-answer-into-json-data wire handler answer))
          :notes  (:mailroom/notes context)}))))
 
 (def ^:private ^System$Logger logger (System/getLogger "mailroom"))
@@ -102,12 +102,12 @@
   "[name {:answer … :notes …}]. Over its :rate-limit, \"Too many requests.\"
    and nothing runs. A failure is logged with its details and answered with
    a plain error: a database's message never reaches the browser."
-  [handlers limiter request [message-name json-data]]
+  [wire handlers limiter request [message-name json-data]]
   [message-name
    (if-let [handler (get handlers message-name)]
      (try (if (is-over-limit? limiter request message-name handler)
             {:answer too-many}
-            (run-handler handler request message-name json-data))
+            (run-handler wire handler request message-name json-data))
           (catch Exception e
             (.log logger System$Logger$Level/ERROR (str "Handler " message-name " failed") ^Throwable e)
             {:answer went-wrong}))
@@ -117,9 +117,10 @@
   "The answer to a message: the same names, each with its handler's answer,
    and :mailroom/notes beside them when a handler has notes. limiter is the
    server's (limits.clj), counting each handler's :rate-limit, or
-   :no-rate-limits, written out, where there is no server (tests, the REPL)."
-  [handlers limiter request message]
-  (let [results (into {} (map #(run-named-message handlers limiter request %)) message)
+   :no-rate-limits, written out, where there is no server (tests, the REPL).
+   wire is the app's, which the data comes in and the answers go out by."
+  [wire handlers limiter request message]
+  (let [results (into {} (map #(run-named-message wire handlers limiter request %)) message)
         notes   (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
     (cond-> (update-vals results :answer)
       (seq notes) (assoc :mailroom/notes notes))))

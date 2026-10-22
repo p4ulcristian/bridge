@@ -4,7 +4,8 @@
    where the data passes as it is. A message's data goes out as JSON data
    by its :params-shape; an answer comes back as shaped data by its
    :answer-shape. A name the table doesn't have is a mistake: going out it
-   throws, nothing is sent; coming in it arrives with :mailroom/errors."
+   throws, nothing is sent; coming in it arrives with :mailroom/errors.
+   wire is the app's, which every shape is used by."
   (:require
    [wire.api :as wire]))
 
@@ -15,13 +16,13 @@
   "Each name's data as JSON data, by its :params-shape. A name without
    shapes, or data that doesn't fit its shape or carries a key it doesn't
    name, throws: nothing is sent."
-  [shapes message]
+  [wire shapes message]
   (turn-each-name message (fn [message-name data]
                             (when-not (contains? shapes message-name)
                               (throw (ex-info (str "No shapes named " message-name)
                                               {:type :mailroom/no-shapes :message-name message-name})))
                             (if-let [shape (get-in shapes [message-name :params-shape])]
-                              (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors shape data)]
+                              (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors wire shape data)]
                                 (when errors
                                   (throw (ex-info (str message-name "'s params don't fit its shape")
                                                   {:type         :mailroom/bad-params
@@ -34,7 +35,7 @@
   "Each name's answer as shaped data, by its :answer-shape. An answer that
    doesn't fit, or whose name has no shapes, stays as it came, with
    :mailroom/errors added. :mailroom/notes, mailroom's own, passes as it is."
-  [shapes answer]
+  [wire shapes answer]
   (turn-each-name answer (fn [message-name data]
                            (cond
                              (= :mailroom/notes message-name)
@@ -45,6 +46,6 @@
 
                              :else
                              (if-let [shape (get-in shapes [message-name :answer-shape])]
-                               (let [{:keys [shaped-data errors]} (wire/turn-json-data-into-shaped-data-or-errors shape data)]
+                               (let [{:keys [shaped-data errors]} (wire/turn-json-data-into-shaped-data-or-errors wire shape data)]
                                  (if errors {:mailroom/errors errors :data data} shaped-data))
                                data)))))

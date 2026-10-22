@@ -7,9 +7,15 @@
    The server's settings and its functions' options are closed maps. A
    handler, a page and a name's shapes are open: the app and the libraries
    on top keep their own keys in them (an access rule beside a handler's
-   steps), and mailroom requires only its own."
+   steps), and mailroom requires only its own.
+
+   They are checked by malli itself, not through wire: they are values the
+   app hands in, not data crossing an edge. The functions that do send or
+   read data across an edge take the app's wire under :wire in their
+   options; mailroom never makes one."
   (:require
-   [wire.api :as wire]))
+   [malli.core :as malli]
+   [malli.error :as malli-error]))
 
 ;; -----------------------------------------------------------------------------
 ;; The server's settings
@@ -69,12 +75,21 @@
 ;; -----------------------------------------------------------------------------
 ;; The server's options and data
 
+(def wire-entry
+  "The app's wire (wire.api's make-wire-from-settings), made once by the
+   app and handed to every function that sends or reads a message."
+  [:wire [some? {:error/message "should be the app's wire, made by wire.api/make-wire-from-settings"}]])
+
 (def routes-options-shape
   "make-routes-for-messages's options, every key required.
+   :wire: the app's wire, for every message the three routes read and
+   write; each line they open carries it, for send-message-on-sse-line!
+   and send-message-on-ws-line!.
    :find-rate-limit-key: (fn [request]) telling askers apart for the
    handlers' :rate-limit. The four hooks: each (fn [line]), or nil written
    out when nothing runs then."
   [:map {:closed true}
+   wire-entry
    [:find-rate-limit-key fn?]
    [:on-sse-open [:maybe fn?]]
    [:on-sse-close [:maybe fn?]]
@@ -121,6 +136,13 @@
    outside a server there is none, so the caller writes :no-rate-limits."
   [:= :no-rate-limits])
 
+(def answer-options-shape
+  "answer-message's options, every key required. :wire: the app's wire,
+   which turns the message's data into shaped data and the answer into
+   JSON data, as over http."
+  [:map {:closed true}
+   wire-entry])
+
 (def pages-shape
   "The app's pages by namespaced name. :address, its path with its params
    (\"/orders/:order-id\"); :title, the tab's title while it shows, nil
@@ -139,21 +161,31 @@
                      [:params-shape :any]
                      [:answer-shape :any]]])
 
+(def send-options-shape
+  "send-message!'s options, every key required. :wire: the app's wire,
+   made from the browser's settings."
+  [:map {:closed true}
+   wire-entry])
+
 (def sse-options-shape
-  "open-sse-line!'s options, every key required. :on-open: (on-open again?)
+  "open-sse-line!'s options, every key required. :wire: the app's wire.
+   :on-open: (on-open again?)
    each time the line opens, again? true after a break; nil when nothing
    runs then. :reconnect-after-ms: how long it waits before it opens a new
    line when the server answered with an HTTP error, which the browser
    doesn't reopen by itself (the server's :sse-reconnect-after-ms setting,
    which the app hands to the browser)."
   [:map {:closed true}
+   wire-entry
    [:on-open [:maybe fn?]]
    [:reconnect-after-ms [:int {:min 1}]]])
 
 (def ws-options-shape
-  "open-ws-line!'s options, every key required. :reopen-after-ms: how long
-   it waits before it reopens a broken line."
+  "open-ws-line!'s options, every key required. :wire: the app's wire; the
+   line carries it, for send-message-on-ws-line!. :reopen-after-ms: how
+   long it waits before it reopens a broken line."
   [:map {:closed true}
+   wire-entry
    [:reopen-after-ms [:int {:min 1}]]])
 
 ;; -----------------------------------------------------------------------------
@@ -163,9 +195,10 @@
   "Returns the data; throws {:type kind :errors …} with every problem at
    once when it doesn't fit the shape."
   [what kind shape data]
-  (when-let [errors (wire/find-errors-in-data-for-shape shape data)]
-    (throw (ex-info (str what " have problems: " (pr-str errors))
-                    {:type kind :errors errors})))
+  (when-let [explanation (malli/explain shape data)]
+    (let [errors (malli-error/humanize explanation)]
+      (throw (ex-info (str what " have problems: " (pr-str errors))
+                      {:type kind :errors errors}))))
   data)
 
 (defn check-settings [settings]
@@ -183,6 +216,9 @@
 (defn check-rate-limits-outside-a-server [rate-limits]
   (check-data-for-shape "The rate limits" :mailroom/bad-options rate-limits-outside-a-server-shape rate-limits))
 
+(defn check-answer-options [options]
+  (check-data-for-shape "The options" :mailroom/bad-options answer-options-shape options))
+
 (defn check-pages [pages]
   (check-data-for-shape "The pages" :mailroom/bad-pages pages-shape pages))
 
@@ -191,6 +227,9 @@
 
 (defn check-sse-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options sse-options-shape options))
+
+(defn check-send-options [options]
+  (check-data-for-shape "The options" :mailroom/bad-options send-options-shape options))
 
 (defn check-ws-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options ws-options-shape options))

@@ -5,7 +5,8 @@
    up (readyState CLOSED) and mailroom opens a new one."
   (:require
    [cljs.test :refer [async deftest is testing]]
-   [mailroom.api :as mailroom]))
+   [mailroom.api :as mailroom]
+   [mailroom.test-wire :refer [wire]]))
 
 (def ^:private opened (atom []))
 
@@ -45,7 +46,7 @@
          (install-stand-in-event-source!)
          (let [opens (atom [])
                line  (mailroom/open-sse-line! "/mail/sse" shapes-by-name {}
-                                              {:on-open #(swap! opens conj %) :reconnect-after-ms 20})]
+                                              {:wire wire :on-open #(swap! opens conj %) :reconnect-after-ms 20})]
            (open! (first @opened))
            (is (= [false] @opens) "the first open")
            (is (false? (.-withCredentials (first @opened))))
@@ -76,7 +77,7 @@
   (async done
          (install-stand-in-event-source!)
          (let [line (mailroom/open-sse-line! "/mail/sse" shapes-by-name {}
-                                             {:on-open nil :reconnect-after-ms 20})]
+                                             {:wire wire :on-open nil :reconnect-after-ms 20})]
            (testing "closed while a reopen waits: it doesn't open"
              (answer-with-http-error! (first @opened))
              (mailroom/close-sse-line! line))
@@ -86,7 +87,7 @@
                        (done))))))
 
 (deftest an-sse-line-says-how-long-it-waits
-  (let [problems (try (mailroom/open-sse-line! "/mail/sse" shapes-by-name {} {:on-open nil})
+  (let [problems (try (mailroom/open-sse-line! "/mail/sse" shapes-by-name {} {:wire wire :on-open nil})
                       nil
                       (catch :default e (ex-data e)))]
     (is (= :mailroom/bad-options (:type problems)) "no :reconnect-after-ms: refused before the line opens")

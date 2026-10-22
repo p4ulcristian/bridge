@@ -13,14 +13,21 @@
                                            :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
                           :sync/changed   {:params-shape nil :answer-shape nil}})
 
-     (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}})   ; a promise of the shaped answer
+     ;; the app's wire, made once by the app from the browser's settings (mailroom never makes one)
+     (def wire (wire.api/make-wire-from-settings {:most-shapes-kept 1000 :most-keys-kept 10000
+                                                  :exact-decimals   wire.big/big}))
+
+     (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}}
+                             {:wire wire})                                        ; a promise of the shaped answer
      (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
-                              {:on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
+                              {:wire wire :on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
      (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
-                             {:reopen-after-ms ws-reopen-after-ms})              ; the server's setting, from the page
+                             {:wire wire :reopen-after-ms ws-reopen-after-ms})   ; the server's setting, from the page
 
    Nothing has a default: the shapes and the options are checked first, and
-   a missing key refuses, named (:mailroom/bad-shapes, :mailroom/bad-options)."
+   a missing key refuses, named (:mailroom/bad-shapes, :mailroom/bad-options).
+   Every function that sends or reads a message takes the app's wire under
+   :wire; a ws line keeps it for send-message-on-ws-line!."
   (:require
    [mailroom.http :as http]
    [mailroom.routes :as routes]
@@ -31,9 +38,11 @@
   "http: POSTs a named message, its data by :params-shape. A promise of the
    answer keyed by the same names, each shaped by its :answer-shape, and
    :mailroom/notes beside them when the server sent notes. A name the
-   shapes don't have throws (:mailroom/no-shapes); nothing is sent."
-  [address shapes-by-name message]
-  (http/send-message! address shapes-by-name message))
+   shapes don't have throws (:mailroom/no-shapes); nothing is sent.
+   Options, every key required: :wire, the app's wire. A missing or bad
+   option refuses, :mailroom/bad-options."
+  [address shapes-by-name message options]
+  (http/send-message! address shapes-by-name message options))
 
 (defn open-sse-line!
   "sse: opens the stream; each named message, shaped by its :answer-shape,
@@ -42,7 +51,8 @@
    :sse-reconnect-after-ms (sent on the line); after an HTTP error (a
    proxy's 502 during a deploy), which the browser doesn't reopen, a new
    line opens after :reconnect-after-ms, and again after each failure.
-   Options, every key required: :on-open, (on-open again?) each time it
+   Options, every key required: :wire, the app's wire, which each message
+   is read by. :on-open, (on-open again?) each time it
    opens, or nil; again? is true after a break, when messages may have
    been missed. :reconnect-after-ms, the server's :sse-reconnect-after-ms
    setting, which the app puts in the page with the addresses. A missing
@@ -58,7 +68,8 @@
 (defn open-ws-line!
   "ws: opens the websocket; each named message, answers included, shaped by
    its :answer-shape, goes to its handler by name. Options, every key
-   required: :reopen-after-ms, how long it waits before it reopens after a
+   required: :wire, the app's wire, which the line keeps for
+   send-message-on-ws-line!; :reopen-after-ms, how long it waits before it reopens after a
    break (the server's :ws-reopen-after-ms setting, which the app puts in
    the page with the addresses). A missing or bad option refuses,
    :mailroom/bad-options."
@@ -66,8 +77,8 @@
   (ws/open-ws-line! address shapes-by-name handlers options))
 
 (defn send-message-on-ws-line!
-  "ws: sends a named message on the line, its data by :params-shape.
-   Whether it was open."
+  "ws: sends a named message on the line, its data by :params-shape,
+   written by the line's wire. Whether it was open."
   [line message]
   (ws/send-message-on-ws-line! line message))
 

@@ -9,8 +9,11 @@
   ;; the routes: reitit on the server, reitit-frontend in the browser (ClojureScript sources)
   metosin/reitit-ring               {:mvn/version "0.11.0"}
   metosin/reitit-frontend           {:mvn/version "0.11.0"}
-  ;; wire: data that crosses an edge comes back as what it was; it brings malli
-  io.github.p4ulcristian/wire       {:git/tag "v0.1.4" :git/sha "5473cf1"}}
+  ;; wire: data that crosses an edge comes back as what it was; the app makes
+  ;; the wire and hands it in
+  io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
+  ;; the settings, options, handlers and shapes, checked before anything runs
+  metosin/malli                     {:mvn/version "0.20.3"}}
 
  :aliases
  {;; the JVM tests:  clojure -X:test

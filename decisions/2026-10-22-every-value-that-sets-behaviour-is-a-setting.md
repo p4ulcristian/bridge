@@ -1,5 +1,7 @@
 # Every value that sets behaviour is a setting; no hidden defaults
 
+> **Changed in part** by [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md) (2026-10-22, v0.2.0): `answer-message` takes an options map, `{:wire wire}`, last; the settings and options are checked by malli itself.
+
 > **Changed in part** by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md) (2026-10-22, v0.1.3): the app hands `:sse-reconnect-after-ms` to the browser too, `open-sse-line!`'s required `:reconnect-after-ms`, and a line the server answered with an HTTP error opens again after it.
 
 > Changes in part [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) and [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md): the values they still left fixed or filled in, and the keys they left optional. Since v0.1.2.

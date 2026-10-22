@@ -1,5 +1,7 @@
 # web has http, sse and ws, a file each, and a route says its kind
 
+> **Changed in part** by [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md) (2026-10-22, v0.2.0): a line carries the app's wire too, `:mailroom/wire`, which messages sent on it are written by.
+
 > **Changed in part** by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) (2026-10-22): the library is mailroom; the ping's interval is the required setting `:ping-every-ms`, and ws pings too.
 
 > **Changed in part** by [web becomes transport and routes](2026-10-22-transport-and-routes.md) (2026-10-22): the library is groundwork.transport, and the routes are groundwork.routes.

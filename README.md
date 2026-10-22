@@ -20,19 +20,25 @@ browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
 types across the edge). One public namespace, `mailroom.api`: a `.clj` for
 the server, a `.cljs` for the browser.
 
+The app makes its wire once, on each side, and hands it in: every function
+that sends or reads a message takes it under `:wire` in its options
+(`make-routes-for-messages`, `answer-message`; in the browser
+`send-message!`, `open-sse-line!`, `open-ws-line!`), and a line keeps the
+one it was opened with. mailroom never makes a wire.
+
 ## The api
 
 | side | name | does |
 |---|---|---|
 | server | `settings-shape` | the settings as a malli shape, every key required |
-| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table; a handler's `:rate-limit` counted per asker |
+| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`; a handler's `:rate-limit` counted per asker |
 | server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none) |
 | server | `start-server!` `stop-server!` | http-kit, every request on a virtual thread |
-| server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` | the server sends on an open line by itself |
-| server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out) |
+| server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` | the server sends on an open line by itself, by the wire the line keeps |
+| server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire}`) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
-| browser | `send-message!` | http: a promise of the answer, shaped |
+| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire` |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |
 
@@ -43,7 +49,16 @@ every other problem at once. No function fills in an argument. What stays
 fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).
 
 ```clojure
-(require '[mailroom.api :as mailroom])
+(require '[mailroom.api :as mailroom]
+         '[wire.api :as wire])
+
+;; the app's wire, made once (wire's settings, every key written out)
+(def wire
+  (wire/make-wire-from-settings
+   {:most-shapes-kept 1000
+    :json-limits      {:max-nesting-depth 1000 :max-number-length 1000 :max-string-length 20000000
+                       :max-name-length 50000 :max-document-length nil :max-token-count nil
+                       :max-writing-nesting-depth 1000}}))
 
 (def settings
   {:ip "0.0.0.0" :port 8080
@@ -85,7 +100,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    (mailroom/make-ring-handler-from-routes
     (into (mailroom/make-routes-for-messages
            handlers settings
-           {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+           {:wire                wire
+            :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
             :on-sse-close        forget-line!
             :on-ws-open          nil
@@ -98,20 +114,25 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 ;; the browser, with the same shapes from a .cljc file, both written out for
 ;; every name it sends or gets; the addresses, :sse-reconnect-after-ms and
-;; :ws-reopen-after-ms come from the server, in the page
+;; :ws-reopen-after-ms come from the server, in the page; the browser's own wire
+(def wire
+  (wire/make-wire-from-settings {:most-shapes-kept 1000
+                                 :most-keys-kept   10000
+                                 :exact-decimals   wire.big/big}))   ; or nil: a decimal stays its text
 (def shapes-by-name
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
                     :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
    :chat/said      {:params-shape nil :answer-shape nil}})
 
-(-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}})
+(-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire})
     (.then (fn [{:orders/keys [of-shop]}] …)))
 
 (mailroom/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
-                         {:on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
+                         {:wire               wire
+                          :on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
                           :reconnect-after-ms sse-reconnect-after-ms})
 (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
-                        {:reopen-after-ms ws-reopen-after-ms})
+                        {:wire wire :reopen-after-ms ws-reopen-after-ms})
 (mailroom/go-to-page! :orders/page {:order-id 42})            ; path params, {} for none
 ```
 

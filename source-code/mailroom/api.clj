@@ -26,11 +26,15 @@
                     :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
                     :rate-limit-buckets-before-cleanup 10000})
 
+     ;; the app's wire, made once by the app (mailroom never makes one)
+     (def wire (wire.api/make-wire-from-settings wire-settings))
+
      (mailroom/start-server!
       (mailroom/make-ring-handler-from-routes
        (mailroom/make-routes-for-messages
         handlers settings
-        {:find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+        {:wire                wire
+         :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
          :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
        {:files nil})
       settings)
@@ -40,7 +44,9 @@
    applies; a missing one refuses, named, with every other problem at once.
 
    A line (an open sse or ws connection) is
-   {:mailroom/channel … :mailroom/request …}."
+   {:mailroom/channel … :mailroom/request … :mailroom/wire …}: it carries
+   the wire its routes were made with, which messages sent on it are
+   written by."
   (:require
    [mailroom.http :as http]
    [mailroom.limits :as limits]
@@ -91,7 +97,9 @@
    :steps; :params-shape and :answer-shape (nil: the data passes as it is);
    :rate-limit, {:max 10 :per-ms 60000} per asker (over it, \"Too many
    requests.\"), nil for none; :run-steps-in, (fn [run context]), nil for
-   none. Options, each required: :find-rate-limit-key, (fn [request])
+   none. Options, each required: :wire, the app's wire (wire.api's
+   make-wire-from-settings), which every message is read and written by;
+   :find-rate-limit-key, (fn [request])
    telling askers apart, such as find-client-address with the settings'
    :client-address-header; :on-sse-open, :on-sse-close, :on-ws-open,
    :on-ws-close, each (fn [line]) or nil when nothing runs then. The
@@ -103,7 +111,7 @@
   (settings/check-routes-options options)
   (let [{:keys [addresses ping-every-ms rate-limit-buckets-before-cleanup]} settings
         limiter (limits/make-limiter (:find-rate-limit-key options) rate-limit-buckets-before-cleanup)]
-    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http handlers limiter)}}]
+    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http (:wire options) handlers limiter)}}]
      [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse settings options)}}]
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
 
@@ -126,12 +134,14 @@
 (defn send-message-on-sse-line!
   "Writes a named message into an open sse line with its id, nil written
    out for none; an id comes back as Last-Event-ID when the browser
-   reconnects. Whether the line was open."
+   reconnects. Written by the wire the line carries. Whether the line was
+   open."
   [line message id]
   (sse/send-message-on-sse-line! line message id))
 
 (defn send-message-on-ws-line!
-  "Sends a named message on an open ws line. Whether it was open."
+  "Sends a named message on an open ws line, written by the wire the line
+   carries. Whether it was open."
   [line message]
   (ws/send-message-on-ws-line! line message))
 
@@ -146,11 +156,13 @@
    out: the server's limiter counts a handler's :rate-limit, and here there
    is none. request is the Ring request it came with (its cookie, its
    origin). Notes, when a handler has them, are beside the answers under
-   :mailroom/notes. The handlers are checked first."
-  [handlers rate-limits request message]
+   :mailroom/notes. Options, every key required: :wire, the app's wire. The
+   handlers and the options are checked first."
+  [handlers rate-limits request message options]
   (settings/check-handlers handlers)
   (settings/check-rate-limits-outside-a-server rate-limits)
-  (messages/answer-named-messages handlers rate-limits request message))
+  (settings/check-answer-options options)
+  (messages/answer-named-messages (:wire options) handlers rate-limits request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Routes

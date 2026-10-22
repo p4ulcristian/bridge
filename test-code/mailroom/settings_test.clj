@@ -3,7 +3,8 @@
    with every other problem at once."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [mailroom.api :as mailroom]))
+   [mailroom.api :as mailroom]
+   [mailroom.test-wire :refer [wire]]))
 
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
@@ -15,7 +16,8 @@
    :rate-limit-buckets-before-cleanup 10000})
 
 (def ^:private options
-  {:find-rate-limit-key identity
+  {:wire                wire
+   :find-rate-limit-key identity
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (defn- find-problems [f]
@@ -40,8 +42,11 @@
 (deftest the-asker-key-and-the-hooks-are-required
   (let [{:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} settings {}))]
     (is (= :mailroom/bad-options type))
-    (is (= #{:find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
+    (is (= #{:wire :find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
         "each missing one, named"))
+  (testing "the wire is the app's, never nil: mailroom makes none"
+    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :wire nil))))
+                   :wire)))
   (testing "a keyword is not a function"
     (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :find-rate-limit-key :remote-addr))))
                    :find-rate-limit-key)))
@@ -71,4 +76,4 @@
                      settings options)))))
   (testing "answer-message checks them too"
     (is (= :mailroom/bad-handlers
-           (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}})))))))
+           (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} {:wire wire})))))))

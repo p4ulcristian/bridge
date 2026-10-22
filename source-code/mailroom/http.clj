@@ -8,20 +8,21 @@
 (def ^:private not-json
   {:status 400 :headers {"content-type" "text/plain"} :body "The body must be a JSON object of named messages."})
 
-(defn- make-json-response [data]
+(defn- make-json-response [wire data]
   {:status  200
    :headers {"content-type" "application/json" "cache-control" "no-store"}
-   :body    (wire/turn-data-into-json-text data)})
+   :body    (wire/turn-data-into-json-text wire data)})
 
-(defn- read-message [request]
-  (try (let [message (wire/turn-json-text-into-data (slurp (:body request) :encoding "UTF-8"))]
+(defn- read-message [wire request]
+  (try (let [message (wire/turn-json-text-into-data wire (slurp (:body request) :encoding "UTF-8"))]
          (when (map? message) message))
        (catch Exception _ nil)))
 
 (defn make-ring-handler-for-http
-  "A Ring handler that answers each named message in the body by its handler."
-  [handlers limiter]
+  "A Ring handler that answers each named message in the body by its
+   handler, read and written by the app's wire."
+  [wire handlers limiter]
   (fn [request]
-    (if-let [message (read-message request)]
-      (make-json-response (messages/answer-named-messages handlers limiter request message))
+    (if-let [message (read-message wire request)]
+      (make-json-response wire (messages/answer-named-messages wire handlers limiter request message))
       not-json)))

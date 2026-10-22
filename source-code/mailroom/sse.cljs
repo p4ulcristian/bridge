@@ -20,9 +20,9 @@
    [mailroom.shapes :as shapes]
    [wire.api :as wire]))
 
-(defn- hand-text! [{:keys [shapes-by-name handlers]} text]
-  (->> (wire/turn-json-text-into-data text)
-       (shapes/turn-answer-into-shaped-data shapes-by-name)
+(defn- hand-text! [{:keys [wire shapes-by-name handlers]} text]
+  (->> (wire/turn-json-text-into-data wire text)
+       (shapes/turn-answer-into-shaped-data wire shapes-by-name)
        (messages/hand-named-messages! handlers)))
 
 (defn- has-given-up? [source]
@@ -44,16 +44,17 @@
 
 (defn open-sse-line!
   "Opens the server stream; each named message, shaped by its :answer-shape,
-   goes to its handler. Options, every key required: :on-open, (on-open
+   goes to its handler. Options, every key required: :wire, the app's
+   wire, which each message is read by; :on-open, (on-open
    again?) each time it opens, again? true after a break, or nil;
    :reconnect-after-ms, how long it waits before it opens a new line when
    the server answered with an error (the server's :sse-reconnect-after-ms).
    The shapes and the options are checked first. Returns the line."
   [address shapes-by-name handlers options]
   (settings/check-shapes-by-name shapes-by-name)
-  (let [{:keys [on-open reconnect-after-ms]} (settings/check-sse-options options)]
+  (let [{:keys [wire on-open reconnect-after-ms]} (settings/check-sse-options options)]
     (doto {:source (atom nil) :closed? (atom false) :opened-before? (atom false)
-           :address address :on-open on-open :reconnect-after-ms reconnect-after-ms
+           :address address :wire wire :on-open on-open :reconnect-after-ms reconnect-after-ms
            :shapes-by-name shapes-by-name :handlers handlers}
       connect!)))
 

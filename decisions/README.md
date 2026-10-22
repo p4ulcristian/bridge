@@ -2,7 +2,7 @@
 
 One file per decision: `YYYY-MM-DD-what-we-decided.md`. The title is the decision. Each file says what we decided, why, and what we chose against. A decision changes by a new file; the old one says so at the top (`Replaced by` or `Changed in part by`), and nothing else in it is rewritten.
 
-All but the last four were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork is now house, the part of manor (the group of libraries this one belongs to) that puts them together; the decisions that stayed with Groundwork are in house's `decisions/`.
+All but the last five were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork is now house, the part of manor (the group of libraries this one belongs to) that puts them together; the decisions that stayed with Groundwork are in house's `decisions/`.
 
 ## In force
 
@@ -12,7 +12,7 @@ All but the last four were made while mailroom was three libraries inside Ground
 - [Three ways between browser and server, each with one job](2026-10-22-three-ways-between-browser-and-server.md)
 - [The three ways are named http, sse and ws](2026-10-22-the-three-ways-are-named-http-sse-ws.md)
 - [A route is a Ring handler made from steps](2026-10-22-a-route-is-a-ring-handler-made-from-steps.md), added to by [web has http, sse and ws](2026-10-22-web-has-http-sse-and-ws.md)
-- [web has http, sse and ws, a file each, and a route says its kind](2026-10-22-web-has-http-sse-and-ws.md), changed in part by [web becomes transport and routes](2026-10-22-transport-and-routes.md) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
+- [web has http, sse and ws, a file each, and a route says its kind](2026-10-22-web-has-http-sse-and-ws.md), changed in part by [web becomes transport and routes](2026-10-22-transport-and-routes.md), [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) and [The app passes its wire](2026-10-22-the-app-passes-its-wire.md)
 - [web becomes transport and routes](2026-10-22-transport-and-routes.md), changed in part by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md), changed in part by "The server puts the browser's settings in the page" (Groundwork's) and [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
@@ -20,8 +20,9 @@ All but the last four were made while mailroom was three libraries inside Ground
 - [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md), changed in part by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
-- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md)
+- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md) and [The app passes its wire](2026-10-22-the-app-passes-its-wire.md)
 - [An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed](2026-10-22-sse-reopens-after-an-http-error.md)
+- [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md)
 
 ## Replaced
 
