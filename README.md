@@ -53,7 +53,7 @@ there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
 | both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:mailroom/errors` |
 | browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside mailroom's own (`{}` for none) |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
-| browser | `start-following-address!` `go-to-page!` `make-address-of-page` | the address bar leads to a page, by name |
+| browser | `start-following-address!` `go-to-page!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `:may-leave?` is asked before leaving a page |
 
 Nothing has a default: every value that sets behaviour is written out,
 the settings, every option, every key of a handler, a page and a name's
@@ -154,7 +154,12 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                           :reconnect-after-ms sse-reconnect-after-ms})
 (mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                         {:wire wire :reopen-after-ms ws-reopen-after-ms})
-(mailroom/go-to-page! :orders/page {:order-id 42})            ; path params, {} for none
+(mailroom/start-following-address! pages
+                                   {:on-page               (fn [page scroll] (draw! page) (mailroom/scroll-as-told! scroll))
+                                    :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
+                                    :may-leave?            #(js/confirm "Leave without saving?")   ; or nil
+                                    :languages             nil})   ; or dictionary's functions and the page's language
+(mailroom/go-to-page! :orders/page {:order-id 42} {:tab :notes})   ; path params and query, {} for none
 ```
 
 ## Tests

@@ -20,12 +20,13 @@ All but the last five were made while mailroom was three libraries inside Ground
 - [An answer may carry notes, and a handler's run returns its context](2026-10-22-an-answer-may-carry-notes.md), changed in part by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md)
 - [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md), changed in part by [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md) and [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
 - [The hooks are written out, and the stop wait, the ws reopen delay and the rate-limit cleanup are settings](2026-10-22-hooks-are-written-out-and-three-numbers-are-settings.md), changed in part by [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md)
-- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md), [The app passes its wire](2026-10-22-the-app-passes-its-wire.md), [The app passes its log](2026-10-22-the-app-passes-its-log.md) and [A message sent over http may carry more headers](2026-10-23-a-message-may-carry-more-headers.md)
+- [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md), changed in part by [An sse line reopens after an HTTP error too](2026-10-22-sse-reopens-after-an-http-error.md), [The app passes its wire](2026-10-22-the-app-passes-its-wire.md), [The app passes its log](2026-10-22-the-app-passes-its-log.md), [A message sent over http may carry more headers](2026-10-23-a-message-may-carry-more-headers.md) and [A page has its query and language](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
 - [An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed](2026-10-22-sse-reopens-after-an-http-error.md)
 - [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md)
 - [The app passes its log; each message gets one that knows its request](2026-10-22-the-app-passes-its-log.md)
 - [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md)
 - [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md)
+- [A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
 
 ## Replaced
 

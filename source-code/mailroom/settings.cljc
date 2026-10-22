@@ -216,6 +216,27 @@
    [:on-open [:maybe fn?]]
    [:reconnect-after-ms [:int {:min 1}]]])
 
+(def following-options-shape
+  "start-following-address!'s options, every key required.
+   :on-page: (fn [page scroll]) now and on every move.
+   :query-shapes-of-pages: by page name, every page's and no other: a
+   malli map its query's text values are read by, or nil to keep them text.
+   :may-leave?: (fn []) -> whether to move, asked before a move to another
+   page; nil when nothing is asked.
+   :languages: nil without languages, or the app's functions for the
+   language prefix of an address and the language the page came in:
+   {:split-language-from-path (fn [path]) -> {:language :path},
+    :make-path-in-language (fn [path language]) -> path,
+    :language-of-page \"en\"}."
+  [:map {:closed true}
+   [:on-page fn?]
+   [:query-shapes-of-pages [:map-of :qualified-keyword :any]]
+   [:may-leave? [:maybe fn?]]
+   [:languages [:maybe [:map {:closed true}
+                        [:split-language-from-path fn?]
+                        [:make-path-in-language fn?]
+                        [:language-of-page :string]]]]])
+
 (def ws-options-shape
   "open-ws-line!'s options, every key required. :wire: the app's wire; the
    line carries it, for send-message-on-ws-line!. :reopen-after-ms: how
@@ -269,6 +290,24 @@
 
 (defn check-send-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options send-options-shape options))
+
+(defn check-following-options
+  "The options, and that :query-shapes-of-pages names every page and no
+   other: :mailroom/bad-options with every problem at once."
+  [pages options]
+  (check-data-for-shape "The options" :mailroom/bad-options following-options-shape options)
+  (let [declared (set (keys (:query-shapes-of-pages options)))
+        missing  (remove declared (keys pages))
+        extra    (remove (set (keys pages)) declared)]
+    (when (or (seq missing) (seq extra))
+      (throw (ex-info (str "The options have problems: :query-shapes-of-pages names "
+                           (when (seq missing) (str "no query shape for " (vec missing)))
+                           (when (and (seq missing) (seq extra)) " and ")
+                           (when (seq extra) (str "pages there are none of " (vec extra))))
+                      {:type   :mailroom/bad-options
+                       :errors {:query-shapes-of-pages (vec (concat (map #(str "no query shape for the page " %) missing)
+                                                                    (map #(str "no page " % " in the pages") extra)))}}))))
+  options)
 
 (defn check-ws-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options ws-options-shape options))

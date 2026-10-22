@@ -1,7 +1,8 @@
 (ns mailroom.api
   "Named messages come in, a handler's steps answer them, the answers go
    out: how a browser and a server talk, the browser's side. Named messages
-   over http, sse and ws, and the pages in the address bar. The server's
+   over http, sse and ws, and the pages in the address bar (with their
+   query, language and scrolling, and a question before leaving). The server's
    side is this namespace's .clj half.
 
    The addresses, the sse and ws reopen delays and the pages come from the server
@@ -104,20 +105,47 @@
 ;; Pages: the address in the bar leads to a page, by name
 
 (defn start-following-address!
-  "Follows the address bar: (on-page {:name … :page … :path-params … :query …})
-   now and on every move, nil for an address no page has. The page's :title
-   becomes the tab's title (nil: the app sets it). pages is the map the
-   server put in the page, {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}."
-  [pages on-page]
-  (routes/start-following-address! pages on-page))
+  "Follows the address bar: (on-page page scroll) now and on every move,
+   page {:name :page :path-params :query :query-errors :fragment :language}
+   or nil for an address no page has; scroll says how the page should
+   scroll once drawn (scroll-as-told!): a new page from the top or at its
+   #fragment, a change of only the query where it is, Back and Forward
+   where that entry was left. The page's :title becomes the tab's title (nil:
+   the app sets it). pages is the map the server put in the page,
+   {:orders/page {:address \"/orders/:order-id\" :title \"Order\"}}.
+   Options, every key required:
+   :on-page;
+   :query-shapes-of-pages, for every page and no other a malli map its
+   query's text values are read by (a value that doesn't fit is left out
+   and named in :query-errors), or nil to keep them text;
+   :may-leave?, (fn []) asked before a move to another page by a link,
+   go-to-page! or Back and Forward (no: nothing moves), or nil;
+   :languages, nil, or {:split-language-from-path f :make-path-in-language f
+   :language-of-page \"en\"}: the app's functions for an address's language
+   prefix (dictionary's), and the language the page came in, which an
+   address without a prefix is in. A move keeps the language.
+   A missing or bad option refuses, :mailroom/bad-options."
+  [pages options]
+  (routes/start-following-address! pages options))
 
 (defn go-to-page!
-  "Moves to the page with this name and path params, {} for none; Back
-   returns."
-  [page-name path-params]
-  (routes/go-to-page! page-name path-params))
+  "Moves to the page with this name, path params ({} for none) and query
+   ({} for none; a nil value leaves its key out), in the language of the
+   page shown, as a link would: Back returns. Another page asks
+   :may-leave? first."
+  [page-name path-params query]
+  (routes/go-to-page! page-name path-params query))
 
 (defn make-address-of-page
-  "A page's address, for a link, with its path params, {} for none."
-  [page-name path-params]
-  (routes/make-address-of-page page-name path-params))
+  "A page's address, for a link, with its path params and query ({} for
+   none), in the language of the page shown:
+   (make-address-of-page :orders/page {:order-id 42} {:tab :notes}) -> \"/de/orders/42?tab=notes\"."
+  [page-name path-params query]
+  (routes/make-address-of-page page-name path-params query))
+
+(defn scroll-as-told!
+  "Scrolls the window as a move told start-following-address!'s on-page:
+   :top, [:y y], [:element id], or :keep (not at all). The app calls it
+   once the page is drawn."
+  [scroll]
+  (routes/scroll-as-told! scroll))

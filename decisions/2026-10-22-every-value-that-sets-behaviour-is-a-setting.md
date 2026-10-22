@@ -1,3 +1,5 @@
+> **Changed in part** by [A page has its query, #fragment and language; a move says how to scroll](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md) (2026-10-23, v0.6.0): `start-following-address!` takes options, every key required; `go-to-page!` and `make-address-of-page` take a query, `{}` for none; reitit-frontend's history options are gone with `easy`.
+
 > **Changed in part** by [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md) (2026-10-23, v0.5.0): `send-message!`'s options gain `:headers`, `{}` for none.
 
 # Every value that sets behaviour is a setting; no hidden defaults
