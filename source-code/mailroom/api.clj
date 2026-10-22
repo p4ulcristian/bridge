@@ -24,11 +24,13 @@
                     :addresses {:http \"/mail/http\" :sse \"/mail/sse\" :ws \"/mail/ws\"}
                     :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
                     :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
-                    :rate-limit-buckets-before-cleanup 10000})
+                    :rate-limit-buckets-before-cleanup 10000
+                    :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}})
 
-     ;; the app's wire and log, made once by the app (mailroom makes neither)
+     ;; the app's wire, log and meter, made once by the app (mailroom makes none)
      (def wire (wire.api/make-wire-from-settings wire-settings))
      (def log (logbook.api/log-function (logbook.api/make-logbook logbook-settings)))
+     (def meter (meter.api/make-meter meter-settings {:log log}))
 
      (mailroom/start-server!
       (mailroom/make-ring-handler-from-routes
@@ -36,6 +38,7 @@
         handlers settings
         {:wire                wire
          :log                 log
+         :meter               meter
          :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
          :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
        {:files nil})
@@ -56,6 +59,14 @@
    :mailroom/server-error and :mailroom/server-warning. mailroom writes
    nowhere else.
 
+   make-routes-for-messages declares mailroom's metrics on the app's meter,
+   its :meter, and counts into it (mailroom.metrics):
+   mailroom_messages_total{name,pipe,outcome}, each named message answered
+   on http or ws; mailroom_answer_seconds{name}, the time to answer it,
+   bucketed by the settings' :metric-buckets; mailroom_open_lines{pipe},
+   the open sse and ws lines. A name no handler has is counted as
+   \"other\".
+
    A line (an open sse or ws connection) is
    {:mailroom/channel … :mailroom/request … :mailroom/wire …}: it carries
    the wire its routes were made with, which messages sent on it are
@@ -66,6 +77,7 @@
    [mailroom.http :as http]
    [mailroom.limits :as limits]
    [mailroom.messages :as messages]
+   [mailroom.metrics :as metrics]
    [mailroom.routes :as routes]
    [mailroom.server :as server]
    [mailroom.settings :as settings]
@@ -80,7 +92,7 @@
     :max-body-bytes :max-header-line-bytes :max-ws-message-bytes
     :addresses {:http :sse :ws} :ping-every-ms :sse-reconnect-after-ms
     :ws-reopen-after-ms :stop-wait-ms :stop-wait-after-cut-ms
-    :rate-limit-buckets-before-cleanup}.
+    :rate-limit-buckets-before-cleanup :metric-buckets {:answer-seconds}}.
    :proxy-protocol: :disable, :enable or :optional, for a load balancer
    that speaks the PROXY protocol. :client-address-header: behind a proxy,
    the header it puts the asker's address in (\"cf-connecting-ip\",
@@ -97,7 +109,8 @@
    requests finish; :stop-wait-after-cut-ms: how long it then waits for the
    cut ones' threads to end. :rate-limit-buckets-before-cleanup: above this
    many rate-limit buckets (one per message name and asker) in memory, the
-   full ones are dropped."
+   full ones are dropped. :metric-buckets: the histograms' bucket bounds,
+   ascending: :answer-seconds, the time to answer a named message."
   settings/settings-shape)
 
 (defn find-client-address
@@ -115,7 +128,10 @@
    none. Options, each required: :wire, the app's wire (wire.api's
    make-wire-from-settings), which every message is read and written by;
    :log, the app's log (logbook's), which each message's log is made from,
-   with a new request id;
+   with a new request id; :meter, the app's meter (meter's make-meter),
+   which mailroom's metrics are declared on here and counted into (each
+   named message by name, pipe and outcome, its answer time, the open
+   lines; mailroom.metrics);
    :find-rate-limit-key, (fn [request])
    telling askers apart, such as find-client-address with the settings'
    :client-address-header; :on-sse-open, :on-sse-close, :on-ws-open,
@@ -128,9 +144,12 @@
   (settings/check-routes-options options)
   ;; a log logbook didn't make can't carry a request id: refused now, not at the first message
   (logbook/with-context (:log options) {})
+  ;; and a meter meter didn't make is refused here too (:meter/not-a-meter)
+  (metrics/declare-metrics! (:meter options) handlers settings)
   (let [{:keys [addresses ping-every-ms rate-limit-buckets-before-cleanup]} settings
         limiter (limits/make-limiter (:find-rate-limit-key options) rate-limit-buckets-before-cleanup)]
-    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http (:wire options) (:log options) handlers limiter)}}]
+    [[(:http addresses) {:post {:handler (http/make-ring-handler-for-http (:wire options) (:log options) handlers limiter
+                                                                          (metrics/make-note-answer (:meter options) :http))}}]
      [(:sse addresses)  {:get  {:handler (sse/make-ring-handler-for-sse settings options)}}]
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
 
@@ -184,7 +203,8 @@
   (settings/check-handlers handlers)
   (settings/check-rate-limits-outside-a-server rate-limits)
   (settings/check-answer-options options)
-  (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits request message))
+  ;; outside a server nothing is counted: answer-message takes no meter
+  (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits metrics/note-nothing request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Answers

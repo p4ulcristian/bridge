@@ -19,7 +19,8 @@ Needs http-kit, reitit (reitit-ring on the server, reitit-frontend in the
 browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
 types across the edge), and on the server
 [logbook](https://github.com/p4ulcristian/logbook) (the app's log, handed
-down). One public namespace, `mailroom.api`: a `.clj` for the server, a
+down) and [meter](https://github.com/p4ulcristian/meter) (the app's
+metrics, handed in). One public namespace, `mailroom.api`: a `.clj` for the server, a
 `.cljs` for the browser.
 
 The app makes its wire once, on each side, and hands it in: every function
@@ -38,12 +39,22 @@ that learns more (who is asking) puts a log with more context back at
 there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
 `start-server!`'s log ([why](decisions/2026-10-22-the-app-passes-its-log.md)).
 
+And with the meter: `make-routes-for-messages` takes the app's meter under
+`:meter` and declares mailroom's metrics on it
+([why](decisions/2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md)):
+`mailroom_messages_total{name,pipe,outcome}`, each named message answered
+on http or ws (`ok`, `invalid`, `refused`, `too-many`, `failed`, `unfit`,
+`no-handler`); `mailroom_answer_seconds{name}`, its time, in the settings'
+`:metric-buckets`; `mailroom_open_lines{pipe}`, the open sse and ws lines.
+The names are the handler table's: one no handler has is counted as
+`"other"`. `answer-message` counts nothing.
+
 ## The api
 
 | side | name | does |
 |---|---|---|
 | server | `settings-shape` | the settings as a malli shape, every key required |
-| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire` and `:log`; a handler's `:rate-limit` counted per asker |
+| server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`, `:log` and `:meter`; a handler's `:rate-limit` counted per asker |
 | server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none) |
 | server | `start-server!` `stop-server!` | http-kit, every request on a virtual thread; `{:log log}` |
 | server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` | the server sends on an open line by itself, by the wire the line keeps |
@@ -64,6 +75,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 ```clojure
 (require '[logbook.api :as logbook]
          '[mailroom.api :as mailroom]
+         '[meter.api :as meter]
          '[wire.api :as wire])
 
 ;; the app's wire, made once (wire's settings, every key written out)
@@ -77,6 +89,9 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 ;; the app's log, made once (logbook's settings, every key written out)
 (def log (logbook/log-function (logbook/make-logbook {:lowest-level :info :format :json
                                                       :errors-kept 1000 :write-to :stdout})))
+
+;; the app's meter, made once (meter's settings, every key written out)
+(def meter (meter/make-meter {:jvm-metrics true :most-series-per-metric 5000} {:log log}))
 
 (def settings
   {:ip "0.0.0.0" :port 8080
@@ -92,7 +107,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    :ws-reopen-after-ms 1000                            ; the browser reopens a broken ws line after this
    :stop-wait-ms 10000                                 ; a stop lets running requests finish this long
    :stop-wait-after-cut-ms 1000                        ; then waits this long for the cut ones to end
-   :rate-limit-buckets-before-cleanup 10000})          ; above this many buckets, the full ones are dropped
+   :rate-limit-buckets-before-cleanup 10000            ; above this many buckets, the full ones are dropped
+   :metric-buckets {:answer-seconds [0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5 5 10]}})   ; seconds to answer a name
 
 (def find-orders-of-shop
   {:name  :find-orders-of-shop
@@ -121,6 +137,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
            handlers settings
            {:wire                wire
             :log                 log            ; the app's (logbook's): each message's steps get one with a request id
+            :meter               meter          ; the app's (meter's): mailroom's metrics are declared on it here
             :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
             :on-sse-close        forget-line!

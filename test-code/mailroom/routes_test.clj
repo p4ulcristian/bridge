@@ -3,6 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [mailroom.api :as mailroom]
    [mailroom.test-log :as test-log :refer [log]]
+   [mailroom.test-meter :refer [meter with-new-meter]]
    [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
@@ -15,6 +16,7 @@
 (def ^:private options
   {:wire                wire
    :log                 log
+   :meter               meter
    :find-rate-limit-key #(mailroom/find-client-address % nil)
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -25,7 +27,8 @@
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
-   :rate-limit-buckets-before-cleanup 10000})
+   :rate-limit-buckets-before-cleanup 10000
+   :metric-buckets {:answer-seconds [0.005 0.05 0.5 5]}})
 
 (def ^:private pages
   {:orders/page {:address "/orders/:order-id" :title "Order"}})
@@ -43,7 +46,7 @@
 (deftest an-address-leads-to-its-pipe-or-its-page
   (let [server (mailroom/start-server!
                 (mailroom/make-ring-handler-from-routes
-                 (into (mailroom/make-routes-for-messages handlers settings options)
+                 (into (mailroom/make-routes-for-messages handlers settings (with-new-meter options))
                        (mailroom/make-server-routes-for-pages pages page-handler))
                  {:files nil})
                 settings

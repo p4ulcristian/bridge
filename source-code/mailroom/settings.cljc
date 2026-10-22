@@ -53,7 +53,11 @@
    the cut requests' threads to end before it returns.
    :rate-limit-buckets-before-cleanup: rate limits keep a bucket per message
    name and asker in memory; above this many, each message first drops the
-   buckets that have refilled full."
+   buckets that have refilled full.
+   :metric-buckets: the upper bounds of mailroom's histograms, in seconds,
+   ascending (meter checks them): {:answer-seconds [0.005 … 10]}, the time
+   to answer one named message. No default: what a handler takes is the
+   app's to say."
   [:map {:closed true}
    [:ip :string]
    [:port :int]
@@ -72,7 +76,9 @@
    [:ws-reopen-after-ms [:int {:min 1}]]
    [:stop-wait-ms [:int {:min 0}]]
    [:stop-wait-after-cut-ms [:int {:min 0}]]
-   [:rate-limit-buckets-before-cleanup [:int {:min 1}]]])
+   [:rate-limit-buckets-before-cleanup [:int {:min 1}]]
+   [:metric-buckets [:map {:closed true}
+                     [:answer-seconds [:vector {:min 1} number?]]]]])
 
 ;; -----------------------------------------------------------------------------
 ;; The server's options and data
@@ -89,6 +95,12 @@
    to it."
   [:log [fn? {:error/message "should be the app's log function, made by logbook"}]])
 
+(def meter-entry
+  "The app's meter, made by meter's make-meter: mailroom's metrics are
+   declared on it and counted into it. A value make-meter didn't make is
+   refused by meter (:meter/not-a-meter)."
+  [:meter [some? {:error/message "should be the app's meter, made by meter.api/make-meter"}]])
+
 (def routes-options-shape
   "make-routes-for-messages's options, every key required.
    :wire: the app's wire, for every message the three routes read and
@@ -96,12 +108,15 @@
    and send-message-on-ws-line!.
    :log: the app's log; each message's steps get one with a new request id
    as context (:mailroom/log), and a handler's failure is written to it.
+   :meter: the app's meter; mailroom's metrics are declared on it and
+   counted into it.
    :find-rate-limit-key: (fn [request]) telling askers apart for the
    handlers' :rate-limit. The four hooks: each (fn [line]), or nil written
    out when nothing runs then."
   [:map {:closed true}
    wire-entry
    log-entry
+   meter-entry
    [:find-rate-limit-key fn?]
    [:on-sse-open [:maybe fn?]]
    [:on-sse-close [:maybe fn?]]

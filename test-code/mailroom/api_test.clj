@@ -5,6 +5,7 @@
    [logbook.api :as logbook]
    [mailroom.api :as mailroom]
    [mailroom.test-log :as test-log :refer [log]]
+   [mailroom.test-meter :refer [meter with-new-meter]]
    [mailroom.test-wire :refer [wire]])
   (:import
    (java.net URI)
@@ -27,11 +28,13 @@
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
-   :rate-limit-buckets-before-cleanup 10000})
+   :rate-limit-buckets-before-cleanup 10000
+   :metric-buckets {:answer-seconds [0.005 0.05 0.5 5]}})
 
 (def ^:private options
   {:wire                wire
    :log                 log
+   :meter               meter
    :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -66,10 +69,10 @@
 
 (deftest the-three-routes-are-at-the-settings-addresses
   (is (= ["/mail/http" "/mail/sse" "/mail/ws"]
-         (map first (mailroom/make-routes-for-messages handlers settings options)))))
+         (map first (mailroom/make-routes-for-messages handlers settings (with-new-meter options))))))
 
 (deftest http-answers-each-name-apart
-  (with-server (find-handler (mailroom/make-routes-for-messages handlers settings options) 0 :post)
+  (with-server (find-handler (mailroom/make-routes-for-messages handlers settings (with-new-meter options)) 0 :post)
     (fn [port]
       (testing "each name answered under its name; one failing doesn't stop the other"
         (is (= [200 "{\"greetings/hello\":{\"hello\":\"Anna\"},\"greetings/fail\":{\"error\":\"Something went wrong.\"}}"]
@@ -88,7 +91,7 @@
 
 (deftest sse-writes-named-messages
   (let [opened (promise)
-        routes (mailroom/make-routes-for-messages handlers settings (assoc options :on-sse-open #(deliver opened %)))]
+        routes (mailroom/make-routes-for-messages handlers settings (assoc (with-new-meter options) :on-sse-open #(deliver opened %)))]
     (with-server (find-handler routes 1 :get)
       (fn [port]
         (let [response (.send (HttpClient/newHttpClient)
@@ -108,7 +111,7 @@
           (.close reader))))))
 
 (deftest ws-answers-by-the-same-handlers
-  (with-server (find-handler (mailroom/make-routes-for-messages handlers settings options) 2 :get)
+  (with-server (find-handler (mailroom/make-routes-for-messages handlers settings (with-new-meter options)) 2 :get)
     (fn [port]
       (let [received (promise)
             socket   (.join (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient))
@@ -123,7 +126,7 @@
         (.join (.sendClose socket 1000 "done"))))))
 
 (deftest ws-pings-so-proxies-keep-the-line
-  (with-server (find-handler (mailroom/make-routes-for-messages handlers (assoc settings :ping-every-ms 100) options) 2 :get)
+  (with-server (find-handler (mailroom/make-routes-for-messages handlers (assoc settings :ping-every-ms 100) (with-new-meter options)) 2 :get)
     (fn [port]
       (let [received (promise)
             socket   (.join (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient))
@@ -141,7 +144,7 @@
         limited      {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
         http-handler (find-handler (mailroom/make-routes-for-messages
                                     limited behind-proxy
-                                    (assoc options :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header behind-proxy))))
+                                    (assoc (with-new-meter options) :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header behind-proxy))))
                                    0 :post)
         ask          (fn [asker]
                        (:body (http-handler {:remote-addr "10.0.0.1"
@@ -211,7 +214,7 @@
                                                            (deliver started true)
                                                            (Thread/sleep 300)
                                                            (mailroom/add-answer-to-context context "done"))}])}
-        server   (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
+        server   (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
                                          (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500)
                                          {:log log})
         answer   (future (post-json (:port server) "{\"greetings/slow\":{}}"))]
@@ -226,7 +229,7 @@
                                                           (deliver started true)
                                                           (Thread/sleep 5000)
                                                           (mailroom/add-answer-to-context context "done"))}])}
-        server  (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings options) 0 :post)
+        server  (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
                                         (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000)
                                         {:log log})
         answer  (future (try (post-json (:port server) "{\"greetings/slow\":{}}") (catch Exception _ :cut)))
@@ -237,7 +240,7 @@
     (is (not= [200 "{\"greetings/slow\":\"done\"}"] (deref answer 5000 nil)))))
 
 (deftest a-body-over-the-setting-is-refused
-  (let [server (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages handlers settings options) 0 :post)
+  (let [server (mailroom/start-server! (find-handler (mailroom/make-routes-for-messages handlers settings (with-new-meter options)) 0 :post)
                                        (assoc settings :max-body-bytes 16)
                                        {:log log})]
     (try

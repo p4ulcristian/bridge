@@ -8,6 +8,7 @@
    :mailroom/wire."
   (:require
    [mailroom.messages :as messages]
+   [mailroom.metrics :as metrics]
    [wire.api :as wire]
    [org.httpkit.server :as http-kit]))
 
@@ -22,9 +23,9 @@
   [line message]
   (http-kit/send! (:mailroom/channel line) (wire/turn-data-into-json-text (:mailroom/wire line) message)))
 
-(defn- answer-on-line! [log handlers limiter {wire :mailroom/wire :as line} text]
+(defn- answer-on-line! [log handlers limiter note-answer! {wire :mailroom/wire :as line} text]
   (let [message (wire/turn-json-text-into-data wire text)]
-    (send-message-on-ws-line! line (messages/answer-named-messages wire log handlers limiter (:mailroom/request line) message))))
+    (send-message-on-ws-line! line (messages/answer-named-messages wire log handlers limiter note-answer! (:mailroom/request line) message))))
 
 (defn- keep-pinging! [wire channel ping-every-ms]
   (let [ping (wire/turn-data-into-json-text wire {:mailroom/ping {}})]
@@ -32,22 +33,26 @@
      #(while (do (Thread/sleep (long ping-every-ms))
                  (http-kit/send! channel ping))))))
 
-(defn- open-websocket [request handlers limiter ping-every-ms {:keys [wire log on-ws-open on-ws-close]}]
+(defn- open-websocket [request handlers limiter ping-every-ms note-answer! {:keys [wire log meter on-ws-open on-ws-close]}]
   (http-kit/as-channel request
                        {:on-open    (fn [channel]
+                                      (metrics/add-to-open-lines! meter :ws 1)
                                       (keep-pinging! wire channel ping-every-ms)
                                       (when on-ws-open (on-ws-open (make-line wire channel request))))
-                        :on-receive #(answer-on-line! log handlers limiter (make-line wire %1 request) %2)
+                        :on-receive #(answer-on-line! log handlers limiter note-answer! (make-line wire %1 request) %2)
                         :on-close   (fn [channel _status]
+                                      (metrics/add-to-open-lines! meter :ws -1)
                                       (when on-ws-close (on-ws-close (make-line wire channel request))))}))
 
 (defn make-ring-handler-for-ws
   "A Ring handler that upgrades to a websocket answering named messages,
    pinging it every ping-every-ms, by the options' :wire, each message with
-   its own log made from the options' :log. A request that isn't a
-   websocket gets 400."
+   its own log made from the options' :log, counted on the options' :meter
+   (the line among the open ones, each name by note-answer!). A request
+   that isn't a websocket gets 400."
   [handlers limiter ping-every-ms options]
-  (fn [request]
-    (if (:websocket? request)
-      (open-websocket request handlers limiter ping-every-ms options)
-      not-a-websocket)))
+  (let [note-answer! (metrics/make-note-answer (:meter options) :ws)]
+    (fn [request]
+      (if (:websocket? request)
+        (open-websocket request handlers limiter ping-every-ms note-answer! options)
+        not-a-websocket))))

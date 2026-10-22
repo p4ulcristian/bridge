@@ -53,14 +53,15 @@
   {:error "The answer doesn't fit its shape."})
 
 (defn- turn-answer-into-json-data
-  "The answer as JSON data by its :answer-shape, checked against it with
-   every map closed: an answer with a key the shape doesn't name is never
-   sent (an extra column, a password hash)."
+  "[the answer as JSON data, :ok], by its :answer-shape, checked against
+   it with every map closed: an answer with a key the shape doesn't name
+   is never sent (an extra column, a password hash), [\"The answer doesn't
+   fit its shape.\", :unfit]."
   [wire {:keys [answer-shape]} answer]
   (if answer-shape
     (let [{:keys [json-data errors]} (wire/turn-shaped-data-into-json-data-or-errors wire answer-shape answer)]
-      (if errors answer-doesnt-fit json-data))
-    answer))
+      (if errors [answer-doesnt-fit :unfit] [json-data :ok]))
+    [answer :ok]))
 
 (defn- run-steps-until-answered [handler-steps context]
   (let [context (steps/run-steps-until-answered handler-steps context)]
@@ -88,15 +89,19 @@
     (if run-steps-in (run-steps-in run context) (run context))))
 
 (defn- run-handler
-  "{:answer … :notes …} for one named message."
+  "{:answer … :notes … :outcome …} for one named message."
   [wire latest handler request message-name json-data]
   (let [{:keys [shaped-data errors]} (turn-params-into-shaped-data-or-errors wire handler json-data)]
     (if errors
-      {:answer {:errors errors}}
+      {:answer {:errors errors} :outcome :invalid}
       (let [context (run-steps latest handler (make-context wire (:mailroom/log @latest) request message-name shaped-data))
-            answer  (:mailroom/answer context)]
-        {:answer (if (answers/is-refusal? answer) answer (turn-answer-into-json-data wire handler answer))
-         :notes  (:mailroom/notes context)}))))
+            answer  (:mailroom/answer context)
+            [answer outcome] (if (answers/is-refusal? answer)
+                               [answer :refused]
+                               (turn-answer-into-json-data wire handler answer))]
+        {:answer  answer
+         :notes   (:mailroom/notes context)
+         :outcome outcome}))))
 
 (def ^:private went-wrong {:error "Something went wrong."})
 
@@ -114,18 +119,20 @@
    and nothing runs. A failure is written with its details to the log the
    steps had got to (the message's, with whatever a step added) and
    answered with a plain error: a database's message never reaches the
-   browser."
-  [wire log handlers limiter request [message-name json-data]]
-  [message-name
-   (if-let [handler (get handlers message-name)]
-     (let [latest (volatile! {:mailroom/log log})]
-       (try (if (is-over-limit? limiter request message-name handler)
-              {:answer too-many}
-              (run-handler wire latest handler request message-name json-data))
-            (catch Exception e
-              ((or (:mailroom/log @latest) log) :error :mailroom/handler-failed {:mailroom/message-name message-name :error e})
-              {:answer went-wrong})))
-     {:answer {:error (str "No handler named " message-name)}})])
+   browser. How it was answered and how long it took go to note-answer!."
+  [wire log handlers limiter note-answer! request [message-name json-data]]
+  (let [started (System/nanoTime)
+        result  (if-let [handler (get handlers message-name)]
+                  (let [latest (volatile! {:mailroom/log log})]
+                    (try (if (is-over-limit? limiter request message-name handler)
+                           {:answer too-many :outcome :too-many}
+                           (run-handler wire latest handler request message-name json-data))
+                         (catch Exception e
+                           ((or (:mailroom/log @latest) log) :error :mailroom/handler-failed {:mailroom/message-name message-name :error e})
+                           {:answer went-wrong :outcome :failed})))
+                  {:answer {:error (str "No handler named " message-name)} :outcome :no-handler})]
+    (note-answer! message-name (:outcome result) (/ (- (System/nanoTime) started) 1e9))
+    [message-name result]))
 
 (defn answer-named-messages
   "The answer to a message: the same names, each with its handler's answer,
@@ -134,10 +141,12 @@
    :no-rate-limits, written out, where there is no server (tests, the REPL).
    wire is the app's, which the data comes in and the answers go out by;
    log the app's, which this message's log is made from, with a new
-   request id as its context. The id isn't in the answer."
-  [wire log handlers limiter request message]
+   request id as its context. The id isn't in the answer.
+   (note-answer! name outcome seconds) is called for each name answered
+   (mailroom.metrics)."
+  [wire log handlers limiter note-answer! request message]
   (let [request-log (logbook/with-context log {:request-id (str (random-uuid))})
-        results     (into {} (map #(run-named-message wire request-log handlers limiter request %)) message)
+        results     (into {} (map #(run-named-message wire request-log handlers limiter note-answer! request %)) message)
         notes       (into {} (keep (fn [[message-name {:keys [notes]}]] (when notes [message-name notes]))) results)]
     (cond-> (update-vals results :answer)
       (seq notes) (assoc :mailroom/notes notes))))

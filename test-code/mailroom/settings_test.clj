@@ -5,6 +5,7 @@
    [clojure.test :refer [deftest is testing]]
    [mailroom.api :as mailroom]
    [mailroom.test-log :as test-log :refer [log]]
+   [mailroom.test-meter :refer [meter with-new-meter]]
    [mailroom.test-wire :refer [wire]]))
 
 (def ^:private settings
@@ -14,11 +15,13 @@
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
-   :rate-limit-buckets-before-cleanup 10000})
+   :rate-limit-buckets-before-cleanup 10000
+   :metric-buckets {:answer-seconds [0.005 0.05 0.5 5]}})
 
 (def ^:private options
   {:wire                wire
    :log                 log
+   :meter               meter
    :find-rate-limit-key identity
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
@@ -28,11 +31,11 @@
 
 (deftest every-setting-is-required
   (let [missing               (disj (set (keys settings)) :ip)
-        {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} (apply dissoc settings missing) options))]
+        {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} (apply dissoc settings missing) (with-new-meter options)))]
     (is (= :mailroom/bad-settings type))
     (is (= missing (set (keys errors))) "each missing one, named"))
   (testing "an address left out"
-    (is (contains? (get-in (find-problems #(mailroom/make-routes-for-messages {} (update settings :addresses dissoc :ws) options))
+    (is (contains? (get-in (find-problems #(mailroom/make-routes-for-messages {} (update settings :addresses dissoc :ws) (with-new-meter options)))
                            [:errors :addresses])
                    :ws)))
   (testing "a key no setting has"
@@ -47,19 +50,30 @@
 (deftest the-asker-key-and-the-hooks-are-required
   (let [{:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {} settings {}))]
     (is (= :mailroom/bad-options type))
-    (is (= #{:wire :log :find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
+    (is (= #{:wire :log :meter :find-rate-limit-key :on-sse-open :on-sse-close :on-ws-open :on-ws-close} (set (keys errors)))
         "each missing one, named"))
+  (testing "the meter is the app's, never nil: one meter didn't make is refused"
+    (is (= ["should be the app's meter, made by meter.api/make-meter"]
+           (get-in (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :meter nil))) [:errors :meter])))
+    (is (= :meter/not-a-meter (:type (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :meter {})))))))
+  (testing "the answer time's buckets are a setting"
+    (is (= {:metric-buckets ["missing required key"]}
+           (:errors (find-problems #(mailroom/make-routes-for-messages {} (dissoc settings :metric-buckets) (with-new-meter options))))))
+    (is (= :meter/bad-metrics
+           (:type (find-problems #(mailroom/make-routes-for-messages {} (assoc settings :metric-buckets {:answer-seconds [1 0.5]})
+                                                                     (with-new-meter options)))))
+        "meter checks they go up"))
   (testing "the log is the app's, made by logbook: one it didn't make can't carry a request id"
-    (is (= :logbook/not-a-log (:type (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :log (fn [_ _ _]))))))))
+    (is (= :logbook/not-a-log (:type (find-problems #(mailroom/make-routes-for-messages {} settings (assoc (with-new-meter options) :log (fn [_ _ _]))))))))
   (testing "the wire is the app's, never nil: mailroom makes none"
-    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :wire nil))))
+    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc (with-new-meter options) :wire nil))))
                    :wire)))
   (testing "a keyword is not a function"
-    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :find-rate-limit-key :remote-addr))))
+    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc (with-new-meter options) :find-rate-limit-key :remote-addr))))
                    :find-rate-limit-key)))
   (testing "a hook is a function or nil, written out"
-    (is (= 3 (count (mailroom/make-routes-for-messages {} settings (assoc options :on-sse-open (fn [_line]))))))
-    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc options :on-ws-open "open"))))
+    (is (= 3 (count (mailroom/make-routes-for-messages {} settings (assoc (with-new-meter options) :on-sse-open (fn [_line]))))))
+    (is (contains? (:errors (find-problems #(mailroom/make-routes-for-messages {} settings (assoc (with-new-meter options) :on-ws-open "open"))))
                    :on-ws-open))))
 
 (deftest the-files-are-written-out
@@ -72,7 +86,7 @@
 
 (deftest every-handler-key-is-written-out
   (let [step                  {:name :answer :enter #(mailroom/add-answer-to-context % "hi")}
-        {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {:greetings/hello {:steps [step]}} settings options))]
+        {:keys [type errors]} (find-problems #(mailroom/make-routes-for-messages {:greetings/hello {:steps [step]}} settings (with-new-meter options)))]
     (is (= :mailroom/bad-handlers type))
     (is (= #{:params-shape :answer-shape :rate-limit :run-steps-in} (set (keys (:greetings/hello errors))))
         "each missing one, named"))
@@ -80,7 +94,7 @@
     (is (= 3 (count (mailroom/make-routes-for-messages
                      {:greetings/hello {:steps [] :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil
                                         :access/rule :anyone}}
-                     settings options)))))
+                     settings (with-new-meter options))))))
   (testing "answer-message checks them too"
     (is (= :mailroom/bad-handlers
            (:type (find-problems #(mailroom/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} {:wire wire :log log})))))))

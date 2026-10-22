@@ -17,6 +17,7 @@
    written by."
   (:require
    [clojure.string :as str]
+   [mailroom.metrics :as metrics]
    [wire.api :as wire]
    [org.httpkit.server :as http-kit]))
 
@@ -38,7 +39,8 @@
    #(while (do (Thread/sleep (long ping-every-ms))
                (http-kit/send! channel ": ping\n\n" false)))))
 
-(defn- open-line! [request {:keys [ping-every-ms sse-reconnect-after-ms]} {:keys [wire on-sse-open]} channel]
+(defn- open-line! [request {:keys [ping-every-ms sse-reconnect-after-ms]} {:keys [wire meter on-sse-open]} channel]
+  (metrics/add-to-open-lines! meter :sse 1)
   ;; a retry: field alone sets the browser's wait and is no message
   (http-kit/send! channel (assoc stream-response :body (str "retry: " sse-reconnect-after-ms "\n\n")) false)
   (keep-pinging! channel ping-every-ms)
@@ -48,12 +50,14 @@
   "A Ring handler that opens a line and keeps it open: it tells the browser
    to wait :sse-reconnect-after-ms before it reopens a broken line, pings it
    every :ping-every-ms, and calls (on-sse-open line) when it opens,
-   (on-sse-close line) when it closes. Each line carries the options' :wire."
-  [settings {:keys [wire on-sse-close] :as options}]
+   (on-sse-close line) when it closes. Each line carries the options' :wire,
+   and is among the open lines on the options' :meter while it is open."
+  [settings {:keys [wire meter on-sse-close] :as options}]
   (fn [request]
     (http-kit/as-channel request
                          {:on-open  #(open-line! request settings options %)
                           :on-close (fn [channel _status]
+                                      (metrics/add-to-open-lines! meter :sse -1)
                                       (when on-sse-close (on-sse-close (make-line wire channel request))))})))
 
 (defn turn-message-into-sse-text

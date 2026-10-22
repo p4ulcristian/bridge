@@ -1,3 +1,5 @@
+> **Changed in part** by [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md) (2026-10-23, v0.7.0): `make-routes-for-messages` also takes `:meter`, the app's meter; `start-server!` and `answer-message` don't.
+
 # The app passes its log; each message gets one that knows its request
 
 > Changes in part [Every value that sets behaviour is a setting](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md) (one log, `System.Logger` `mailroom`) and [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) (what a step's context holds). Since v0.3.0, on logbook v0.1.0.
