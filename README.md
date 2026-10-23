@@ -12,7 +12,7 @@ its shape allows; a rate limit per asker; and the pages in the address bar,
 by name, on both sides.
 
 ```clojure
-io.github.p4ulcristian/groundwork-bridge {:git/tag "v0.7.8" :git/sha "90dd8fa"}
+io.github.p4ulcristian/groundwork-bridge {:git/tag "v0.7.9" :git/sha "8967097"}
 ```
 
 Needs Jetty 12 through [rj9a](https://github.com/sunng87/ring-jetty9-adapter)
