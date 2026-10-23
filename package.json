@@ -1,5 +1,5 @@
 {
-  "name": "bridge",
+  "name": "groundwork-bridge",
   "private": true,
   "description": "bridge's ClojureScript test build; big.js comes for wire's exact decimals",
   "scripts": {
