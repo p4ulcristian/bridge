@@ -38,3 +38,4 @@
 ## Sub-decisions
 
 1. **doorman adds its own reasons** (`:doorman/signed-out`, `:doorman/not-found`, `:doorman/not-allowed`) to the `:refusals` of every handler it wraps; the app doesn't write them. doorman is the one that refuses, and one handler where the app forgot them would turn a real "signed out" into `:bridge/failed`. (The user's yes, 2026-10-23.)
+2. **Params that don't fit are a refusal too:** `{:bridge/refused :bridge/invalid :bridge/data {:errors {…}}}` replaces today's bare `{:errors {…}}`, so every refusal has one shape and the browser checks one key. (The user's yes, 2026-10-23.)
