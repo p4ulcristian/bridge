@@ -44,26 +44,36 @@
 (deftest an-http-error-opens-a-new-line-and-on-open-says-again
   (async done
          (install-stand-in-event-source!)
-         (let [opens (atom [])
-               line  (bridge/open-sse-line! "/mail/sse" shapes-by-name {}
-                                              {:wire wire :on-open #(swap! opens conj %) :reconnect-after-ms 20})]
+         (let [opens  (atom [])
+               breaks (atom 0)
+               line   (bridge/open-sse-line! "/mail/sse" shapes-by-name {}
+                                               {:wire wire :on-open #(swap! opens conj %) :on-break #(swap! breaks inc)
+                                                :reconnect-after-ms 20})]
+           (testing "a first try that fails is no break: it was never open"
+             (break-network! (first @opened))
+             (is (= 0 @breaks)))
            (open! (first @opened))
            (is (= [false] @opens) "the first open")
            (is (false? (.-withCredentials (first @opened))))
            (testing "a network break: the browser reopens it itself, bridge opens nothing"
              (break-network! (first @opened))
+             (is (= 1 @breaks) "the break told once")
+             (break-network! (first @opened))
+             (is (= 1 @breaks) "a failed try after it is the same break")
              (open! (first @opened))
              (is (= [false true] @opens))
              (is (= 1 (count @opened))))
-           (testing "an HTTP error: nothing at once"
+           (testing "an HTTP error: the break told, nothing opened at once"
              (answer-with-http-error! (first @opened))
+             (is (= 2 @breaks))
              (is (= 1 (count @opened))))
            (after-ms 60
                      (fn []
                        (is (= 2 (count @opened)) "a new line after :reconnect-after-ms")
                        (is (= "/mail/sse" (.-address (second @opened))))
-                       (testing "and again after each failure"
-                         (answer-with-http-error! (second @opened)))
+                       (testing "and again after each failure, the same break"
+                         (answer-with-http-error! (second @opened))
+                         (is (= 2 @breaks)))
                        (after-ms 60
                                  (fn []
                                    (is (= 3 (count @opened)))
@@ -76,8 +86,16 @@
 (deftest a-closed-line-stays-closed
   (async done
          (install-stand-in-event-source!)
+         (let [breaks (atom 0)
+               closed (bridge/open-sse-line! "/mail/sse" shapes-by-name {}
+                                             {:wire wire :on-open nil :on-break #(swap! breaks inc) :reconnect-after-ms 20})]
+           (open! (first @opened))
+           (bridge/close-sse-line! closed)
+           ((.-onerror (first @opened)) #js {})
+           (is (= 0 @breaks) "closed on purpose is no break"))
+         (install-stand-in-event-source!)
          (let [line (bridge/open-sse-line! "/mail/sse" shapes-by-name {}
-                                             {:wire wire :on-open nil :reconnect-after-ms 20})]
+                                           {:wire wire :on-open nil :on-break nil :reconnect-after-ms 20})]
            (testing "closed while a reopen waits: it doesn't open"
              (answer-with-http-error! (first @opened))
              (bridge/close-sse-line! line))
@@ -87,7 +105,7 @@
                        (done))))))
 
 (deftest an-sse-line-says-how-long-it-waits
-  (let [problems (try (bridge/open-sse-line! "/mail/sse" shapes-by-name {} {:wire wire :on-open nil})
+  (let [problems (try (bridge/open-sse-line! "/mail/sse" shapes-by-name {} {:wire wire :on-open nil :on-break nil})
                       nil
                       (catch :default e (ex-data e)))]
     (is (= :bridge/bad-options (:type problems)) "no :reconnect-after-ms: refused before the line opens")
@@ -97,7 +115,7 @@
   (install-stand-in-event-source!)
   (let [heard (atom [])
         line  (bridge/open-sse-line! "/mail/sse" shapes-by-name {:sync/changed #(swap! heard conj %)}
-                                     {:wire wire :on-open nil :reconnect-after-ms 20})]
+                                     {:wire wire :on-open nil :on-break nil :reconnect-after-ms 20})]
     ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"bridge/refused\":\"sync/stopped\",\"bridge/data\":null,\"bridge/request-id\":\"r\"}}"})
     ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"bridge/refused\":\"sync/unknown\",\"bridge/data\":null,\"bridge/request-id\":\"r\"}}"})
     (is (= [{:bridge/refused :sync/stopped :bridge/data nil :bridge/request-id "r"} :bridge/unfit]

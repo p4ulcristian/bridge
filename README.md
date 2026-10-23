@@ -100,7 +100,7 @@ the app's own route, the REPL's, a test's on a meter of its own
 | both | `is-error-answer?` | a refusal rather than data: a map carrying `:bridge/refused` |
 | both | `refusals` | bridge's own reasons with their data's shapes; every name may be refused with them |
 | browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside bridge's own (`{}` for none), and `:keep-alive?`, true for a request that finishes after the page closes (fetch's keepalive); it never fails for want of an answer: no response, or one that isn't the server's JSON, is `:bridge/no-answer {:http-status n}` under each name |
-| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
+| browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given); an sse line says when it opens (`:on-open`, `again?` after a break) and when it breaks (`:on-break`, once per break), the line's status for an offline banner |
 | browser | `start-following-address!` `go-to-page!` `finish-move!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `go-to-page!` says how it goes into the history, `:push` or `:replace`; `:may-leave?` is asked before leaving a page, with the move; a move it held back the app may finish later with `finish-move!` (its own dialog's Leave: Back and Forward go back for real) |
 
 Nothing has a default: every value that sets behaviour is written out,
@@ -213,6 +213,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 (bridge/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
                        {:wire               wire
                         :on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
+                        :on-break           nil            ; or (fn []), once per break: show the line is down
                         :reconnect-after-ms sse-reconnect-after-ms})
 (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                       {:wire wire :reopen-after-ms ws-reopen-after-ms})

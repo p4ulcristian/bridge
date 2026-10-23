@@ -22,7 +22,7 @@
      (bridge/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}}
                              {:wire wire :headers {} :keep-alive? false})        ; a promise of the shaped answer
      (bridge/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
-                              {:wire wire :on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
+                              {:wire wire :on-open nil :on-break nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
      (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
                              {:wire wire :reopen-after-ms ws-reopen-after-ms})   ; the server's setting, from the page
 
@@ -82,7 +82,9 @@
    Options, every key required: :wire, the app's wire, which each message
    is read by. :on-open, (on-open again?) each time it
    opens, or nil; again? is true after a break, when messages may have
-   been missed. :reconnect-after-ms, the server's :sse-reconnect-after-ms
+   been missed. :on-break, (on-break) once per break, at the first error
+   after an open, or nil: with :on-open's again?, the line's status (open,
+   broken, back) for an offline banner. :reconnect-after-ms, the server's :sse-reconnect-after-ms
    setting, which the app puts in the page with the addresses. A missing
    or bad option refuses, :bridge/bad-options."
   [address shapes-by-name handlers options]

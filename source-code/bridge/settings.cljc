@@ -311,13 +311,16 @@
   "open-sse-line!'s options, every key required. :wire: the app's wire.
    :on-open: (on-open again?)
    each time the line opens, again? true after a break; nil when nothing
-   runs then. :reconnect-after-ms: how long it waits before it opens a new
+   runs then. :on-break: (on-break) once per break, at the first error
+   after an open (the network, the server down, a proxy's error), before
+   it is back; nil when nothing runs then. :reconnect-after-ms: how long it waits before it opens a new
    line when the server answered with an HTTP error, which the browser
    doesn't reopen by itself (the server's :sse-reconnect-after-ms setting,
    which the app hands to the browser)."
   [:map {:closed true}
    wire-entry
    [:on-open [:maybe fn?]]
+   [:on-break [:maybe fn?]]
    [:reconnect-after-ms [:int {:min 1}]]])
 
 (def following-options-shape

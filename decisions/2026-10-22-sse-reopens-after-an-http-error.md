@@ -1,5 +1,7 @@
 # An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed
 
+> **Added to** by [An sse line tells its break, once, for an offline banner](2026-10-23-an-sse-line-tells-its-break.md) (2026-10-23, built on tidy-up, not released): `:on-break`, required, nil for none, runs once at the first error after an open.
+
 > Changes in part [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): `:sse-reconnect-after-ms` reaches the browser through the app too, and `open-sse-line!` takes it as a required option. Since v0.1.3.
 
 **Decision:** the browser's sse line stays open until `close-sse-line!`, whatever ended it.
