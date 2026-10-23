@@ -1,5 +1,7 @@
 # An error answer is told from data by one function, the same on both sides
 
+> **Changed in part by** [A refusal is a named reason, declared on its handler](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md) (2026-10-23, built on tidy-up): `is-error-answer?` checks one key, `:bridge/refused`; `{:error …}`, `{:errors …}` and `{:bridge/errors …}` are gone.
+
 > Adds to [Answers are checked, errors stay in the log](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md) and [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md). Since v0.4.0.
 
 **Decision:** `(mailroom/is-error-answer? answer)`, on both sides, says whether an answer is one of mailroom's error answers rather than data:
