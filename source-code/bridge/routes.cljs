@@ -9,8 +9,9 @@
    go-to-page!, move without a reload (HTML5 history), Back and Forward
    too; the page's :title becomes the tab's title. Before a move to
    another page (not one that changes only the query or the #fragment),
-   the app's :may-leave? is asked; no, and nothing moves (Back and Forward
-   are put back).
+   the app's :may-leave? is asked, with the move; no, and nothing moves
+   (Back and Forward are put back), and the app may finish the move later
+   with finish-move! (its own dialog's Leave).
 
    Each move tells how the page should scroll once it is drawn: a new page
    from the top, or at its #fragment's element; a change of only the
@@ -162,7 +163,7 @@
 ;; Following the address bar
 
 (defonce ^:private following
-  ;; {:router :options :page :index :reverting? :positions {index y}}
+  ;; {:router :options :page :index :reverting? :letting-through :go-after-revert :positions {index y}}
   (atom nil))
 
 (defn- find-page-at [address]
@@ -182,9 +183,12 @@
       (ask-browser :set-title! title)))
   ((get-in @following [:options :on-page]) page scroll))
 
-(defn- may-leave? [from to]
+(defn- may-leave?
+  "Whether the move goes now: yes without :may-leave?, and for a move that
+   stays on the page; else the app's answer, asked with the move."
+  [from to move]
   (let [ask (get-in @following [:options :may-leave?])]
-    (or (nil? ask) (not= :another-page (find-kind-of-move from to)) (ask))))
+    (or (nil? ask) (not= :another-page (find-kind-of-move from to)) (boolean (ask move)))))
 
 (defn- keep-scroll-of-entry! []
   (let [{:keys [index]} @following]
@@ -200,19 +204,14 @@
     (throw (ex-info (str "A move is :push or :replace, written out, not " (pr-str way))
                     {:type :bridge/bad-way :way way}))))
 
-(defn move-to-address!
-  "Moves to an address, as a link would: true when it leads to a page
-   (moved, or kept where it is when :may-leave? said no), false when no
-   page has it (the caller lets the browser load it). way: :push adds a
-   step for Back, :replace doesn't (a move to the address shown replaces
-   either way)."
-  [address way]
-  (check-way! way)
+(defn- move-to-address-asking!
+  "move-to-address!, asking :may-leave? first when ask? is true."
+  [address way ask?]
   (let [{from :page :keys [index]} @following
         to                         (find-page-at address)]
     (cond
-      (nil? to)                  false
-      (not (may-leave? from to)) true
+      (nil? to)                                                        false
+      (and ask? (not (may-leave? from to {:address address :way way :index nil}))) true
       :else
       (let [replace?   (or (= :replace way) (= :none (find-kind-of-move from to)))
             next-index (if replace? index (inc index))]
@@ -222,33 +221,70 @@
         (arrive! to (find-scroll-of-move from to))
         true))))
 
+(defn move-to-address!
+  "Moves to an address, as a link would: true when it leads to a page
+   (moved, or kept where it is when :may-leave? said no), false when no
+   page has it (the caller lets the browser load it). way: :push adds a
+   step for Back, :replace doesn't (a move to the address shown replaces
+   either way)."
+  [address way]
+  (check-way! way)
+  (move-to-address-asking! address way true))
+
+(defn- go-to-index!
+  "Back or Forward to the history entry with this index, let through
+   without asking when its pop comes; nothing when it is shown."
+  [to-index]
+  (let [delta (- to-index (:index @following))]
+    (when-not (zero? delta)
+      (swap! following assoc :letting-through to-index)
+      (ask-browser :go! delta))))
+
 (defn- follow-pop!
   "Back or Forward has moved the address already: arrive, scrolled where
-   that entry was left; or, when :may-leave? says no, put the address back."
+   that entry was left; or, when :may-leave? says no, put the address back.
+   A move finished while the address was being put back goes once it is."
   []
-  (let [{from :page :keys [index reverting? positions]} @following
-        to         (find-page-at (ask-browser :read-address))
+  (let [{from :page :keys [index reverting? positions letting-through go-after-revert]} @following
+        address    (ask-browser :read-address)
+        to         (find-page-at address)
         to-index   (or (ask-browser :read-index) index)
         delta      (- to-index index)]
     (cond
       reverting?
-      (swap! following assoc :reverting? false)
+      (do (swap! following assoc :reverting? false :go-after-revert nil)
+          (when go-after-revert (go-to-index! go-after-revert)))
 
-      (and (not (zero? delta)) (not (may-leave? from to)))
+      (and (not (zero? delta)) (not= letting-through to-index)
+           (not (may-leave? from to {:address address :way :history :index to-index})))
       (do (swap! following assoc :reverting? true)
           (ask-browser :go! (- delta)))
 
       :else
       (do (keep-scroll-of-entry!)
-          (swap! following assoc :index to-index)
+          (swap! following assoc :index to-index :letting-through nil)
           (arrive! to (if-let [y (get positions (str to-index))] [:y y] :top))))))
+
+(defn finish-move!
+  "Finishes a move :may-leave? held back, as it would have gone, without
+   asking again: a link's or go-to-page!'s moves to its address, :push or
+   :replace; Back's or Forward's goes back or forward to its entry for
+   real, adding none."
+  [move]
+  (let [{:keys [address way index]} (settings/check-move move)]
+    (if (= :history way)
+      (if (:reverting? @following)
+        (swap! following assoc :go-after-revert index)
+        (go-to-index! index))
+      (move-to-address-asking! address way false))
+    nil))
 
 (defn start-following-address!
   "Follows the address bar (see the namespace): (on-page page scroll) now
    and on every move, page nil for an address no page has. Options, every
    key required: :on-page; :query-shapes-of-pages, a malli map or nil for
-   every page, by name, nil reading the query as text; :may-leave?, (fn [])
-   asked before moving to another page, or nil; :languages, nil, or
+   every page, by name, nil reading the query as text; :may-leave?, (fn
+   [move]) asked before moving to another page, or nil; :languages, nil, or
    {:split-language-from-path f :make-path-in-language f :language-of-page
    l}, the app's functions and the language the page came in."
   [pages options]
@@ -260,6 +296,8 @@
                        :page             nil
                        :index            index
                        :reverting?       false
+                       :letting-through  nil
+                       :go-after-revert  nil
                        :positions        positions
                        :language-of-page (get-in options [:languages :language-of-page])})
     (ask-browser :listen! {:on-pop        follow-pop!

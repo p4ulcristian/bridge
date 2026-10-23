@@ -99,7 +99,7 @@
     (reset! routes/browser browser)
     (bridge/start-following-address! pages {:on-page               (fn [page scroll] (swap! arrived conj [(:name page) (:query page) scroll]))
                                               :query-shapes-of-pages query-shapes
-                                              :may-leave?            (fn [] (swap! asked inc) @leave?)
+                                              :may-leave?            (fn [_move] (swap! asked inc) @leave?)
                                               :languages             nil})
     (is (= [[:orders/list {:page 1} :keep]] @arrived) "the page it loaded at")
     (is (= "Orders" (:title @state)))
@@ -145,6 +145,66 @@
     (testing "the app scrolls as told"
       (doseq [scroll [:top [:y 5] [:element "notes"] :keep]] (bridge/scroll-as-told! scroll))
       (is (= [:top [:y 5] [:element "notes"]] (:scrolled @state))))))
+
+(deftest a-held-move-is-finished-later
+  (let [{:keys [state browser] :as stand-in} (make-stand-in-browser "/orders")
+        arrived (atom [])
+        held    (atom [])
+        address #(get-in @state [:entries (:at @state) :address])]
+    (reset! routes/browser browser)
+    (bridge/start-following-address! pages {:on-page               (fn [page _] (swap! arrived conj (:name page)))
+                                              :query-shapes-of-pages query-shapes
+                                              :may-leave?            (fn [move] (swap! held conj move) false)
+                                              :languages             nil})
+    (testing "a link held back: asked with the move, nothing moves"
+      (is (true? ((get-in @state [:hooks :on-link]) "/orders/7")))
+      (is (= [{:address "/orders/7" :way :push :index nil}] @held))
+      (is (= [:orders/list] @arrived))
+      (is (= "/orders" (address))))
+    (testing "finished: it moves as it would have, not asked again"
+      (bridge/finish-move! (first @held))
+      (is (= [:orders/list :orders/order] @arrived))
+      (is (= "/orders/7" (address)))
+      (is (= 2 (count (:entries @state))) "a step for Back")
+      (is (= 1 (count @held))))
+    (testing "go-to-page!'s :replace, finished, replaces"
+      (reset! held [])
+      (bridge/go-to-page! :orders/list {} {:page 2} :replace)
+      (is (= [{:address "/orders?page=2" :way :replace :index nil}] @held))
+      (bridge/finish-move! (first @held))
+      (is (= "/orders?page=2" (address)))
+      (is (= 2 (count (:entries @state))) "no new entry"))
+    (testing "Back held back: the address is put back; finished, it goes back for real"
+      (reset! held [])
+      (bridge/go-to-page! :orders/order {:order-id "9"} {} :push)
+      (bridge/finish-move! (first @held))
+      (is (= 3 (count (:entries @state))))
+      (reset! held [])
+      (press-back! stand-in)
+      (is (= [{:address "/orders?page=2" :way :history :index 1}] @held) "asked with the entry it goes to")
+      (is (= "/orders/9" (address)) "put back")
+      ((get-in @state [:hooks :on-pop]))
+      (bridge/finish-move! (first @held))
+      (is (= "/orders?page=2" (address)) "back for real")
+      ((get-in @state [:hooks :on-pop]))
+      (is (= :orders/list (peek @arrived)))
+      (is (= 1 (count @held)) "not asked again")
+      (is (= 3 (count (:entries @state))) "no entry added: Forward still leads to /orders/9"))
+    (testing "finished while the address is still being put back: it goes once it is"
+      (reset! held [])
+      (bridge/go-to-page! :orders/order {:order-id "9"} {} :push)
+      (bridge/finish-move! (first @held))
+      (reset! held [])
+      (press-back! stand-in)
+      (bridge/finish-move! (first @held))
+      (is (= "/orders/9" (address)) "not yet: the put-back's pop hasn't come")
+      ((get-in @state [:hooks :on-pop]))
+      (is (= "/orders?page=2" (address)) "the put-back came, then back for real")
+      ((get-in @state [:hooks :on-pop]))
+      (is (= :orders/list (peek @arrived))))
+    (testing "a move that isn't one is refused"
+      (is (= :bridge/bad-move (try (bridge/finish-move! {:address "/orders" :way :history :index nil})
+                                   (catch :default e (:type (ex-data e)))))))))
 
 (deftest the-options-are-checked
   (let [{:keys [browser]} (make-stand-in-browser "/orders")]

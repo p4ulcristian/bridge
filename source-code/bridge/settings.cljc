@@ -325,8 +325,10 @@
    :on-page: (fn [page scroll]) now and on every move.
    :query-shapes-of-pages: by page name, every page's and no other: a
    malli map its query's text values are read by, or nil to keep them text.
-   :may-leave?: (fn []) -> whether to move, asked before a move to another
-   page; nil when nothing is asked.
+   :may-leave?: (fn [move]) -> whether to move now, asked before a move to
+   another page with the move (move-shape); false keeps the page shown,
+   and the app may finish the move later (finish-move!); nil when nothing
+   is asked.
    :languages: nil without languages, or the app's functions for the
    language prefix of an address and the language the page came in:
    {:split-language-from-path (fn [path]) -> {:language :path},
@@ -340,6 +342,21 @@
                         [:split-language-from-path fn?]
                         [:make-path-in-language fn?]
                         [:language-of-page :string]]]]])
+
+(def move-shape
+  "A move :may-leave? is asked about, which finish-move! finishes, every
+   key written out. :address: where it goes, path, query and #fragment.
+   :way: :push or :replace for a link's or go-to-page!'s move, :history
+   for Back or Forward. :index: for :history, the history entry it goes
+   to (bridge's own number of it); nil for the other two."
+  [:and
+   [:map {:closed true}
+    [:address :string]
+    [:way [:enum :push :replace :history]]
+    [:index [:maybe :int]]]
+   [:fn {:error/message "a :history move names its entry's :index; a :push or :replace one, nil"
+         :error/path    [:index]}
+    (fn [{:keys [way index]}] (= (= :history way) (int? index)))]])
 
 (def ws-options-shape
   "open-ws-line!'s options, every key required. :wire: the app's wire; the
@@ -422,3 +439,6 @@
 
 (defn check-ws-options [options]
   (check-data-for-shape "The options" :bridge/bad-options ws-options-shape options))
+
+(defn check-move [move]
+  (check-data-for-shape "The move" :bridge/bad-move move-shape move))

@@ -132,8 +132,12 @@
    :query-shapes-of-pages, for every page and no other a malli map its
    query's text values are read by (a value that doesn't fit is left out
    and named in :query-errors), or nil to keep them text;
-   :may-leave?, (fn []) asked before a move to another page by a link,
-   go-to-page! or Back and Forward (no: nothing moves), or nil;
+   :may-leave?, (fn [move]) asked before a move to another page by a
+   link, go-to-page! or Back and Forward, with the move, {:address \"/orders/7\"
+   :way :push :index nil} (:way :push or :replace, or :history for Back
+   and Forward, its :index the entry it goes to): true moves; false
+   stays (Back and Forward are put back), and the app may finish the
+   move later with finish-move!; or nil;
    :languages, nil, or {:split-language-from-path f :make-path-in-language f
    :language-of-page \"en\"}: the app's functions for an address's language
    prefix (dictionary's), and the language the page came in, which an
@@ -151,6 +155,15 @@
    :may-leave? first. Any other way throws, :bridge/bad-way."
   [page-name path-params query way]
   (routes/go-to-page! page-name path-params query way))
+
+(defn finish-move!
+  "Finishes a move :may-leave? held back (its dialog's Leave), as it would
+   have gone, without asking again: a link's or go-to-page!'s moves to its
+   address, :push or :replace; Back's or Forward's goes back or forward
+   to its entry for real, adding no history entry. A move that isn't one
+   :may-leave? was handed throws, :bridge/bad-move."
+  [move]
+  (routes/finish-move! move))
 
 (defn make-address-of-page
   "A page's address, for a link, with its path params and query ({} for
