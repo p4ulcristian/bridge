@@ -240,9 +240,11 @@
 (defn make-message-limiter
   "A limiter for answer-message, counting each handler's :rate-limit per
    asker, as the server's does: for messages answered off the server's
-   addresses (a token's call on the app's own route). Options, every key
-   required, checked first: :find-rate-limit-key (fn [request]) telling
-   askers apart; :buckets-before-cleanup."
+   addresses (a token's call on the app's own route). Its buckets are its
+   own, not the server's: a message counted here is not counted on the
+   server's limiter, nor the other way round. Options, every key required,
+   checked first: :find-rate-limit-key (fn [request]) telling askers apart;
+   :buckets-before-cleanup."
   [options]
   (let [{:keys [find-rate-limit-key buckets-before-cleanup]} (settings/check-message-limiter-options options)]
     (limits/make-limiter find-rate-limit-key buckets-before-cleanup)))
@@ -250,24 +252,26 @@
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a
    server: for tests, the REPL, and messages answered off the server's
-   addresses. rate-limits is :no-rate-limits, written out (nothing is
+   addresses. limiter is :no-rate-limits, written out (nothing is
    counted), or a limiter from make-message-limiter (each handler's
-   :rate-limit counted per asker). request is the Ring request it came with (its cookie, its
-   origin), at :bridge/request in each step's context, or nil for a message
-   that came with none (a REPL's), whose steps then find no request; a
-   limiter needs a request to tell askers apart. Notes, when a handler has them, are beside the answers under
-   :bridge/notes. Options, every key required: :wire, the app's wire;
-   :log, the app's log, which the message's log is made from. The handlers
-   and the options are checked first."
-  [handlers rate-limits request message options]
+   :rate-limit counted per asker, in that limiter's buckets). request is
+   the Ring request it came with (its cookie, its origin), at
+   :bridge/request in each step's context, or nil for a message that came
+   with none (a REPL's), whose steps then find no request; a limiter needs
+   a request to tell askers apart. Notes, when a handler has them, are
+   beside the answers under :bridge/notes. Options, every key required:
+   :wire, the app's wire; :log, the app's log, which the message's log is
+   made from. The handlers, the limiter and the options are checked first.
+   No metrics are counted: answer-message takes no meter."
+  [handlers limiter request message options]
   (settings/check-handlers handlers)
-  (settings/check-rate-limits-outside-a-server rate-limits)
+  (settings/check-message-limiter limiter)
   (settings/check-answer-options options)
-  (when (and (nil? request) (not= :no-rate-limits rate-limits))
-    (throw (ex-info "A message with no request has no asker to count: its rate limits are :no-rate-limits"
+  (when (and (nil? request) (not= :no-rate-limits limiter))
+    (throw (ex-info "A message with no request has no asker to count: its limiter is :no-rate-limits"
                     {:type :bridge/bad-options})))
-  ;; outside a server nothing is counted: answer-message takes no meter
-  (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits metrics/note-nothing request message))
+  ;; answer-message takes no meter: no metrics are counted
+  (messages/answer-named-messages (:wire options) (:log options) handlers limiter metrics/note-nothing request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Answers

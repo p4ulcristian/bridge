@@ -2,7 +2,7 @@
   "The server's routes, with reitit: the three addresses, and each page,
    answered by the app's page handler when it is opened fresh; files (the
    browser's code, its styles) from a folder on disk. Any other address is
-   a 404.
+   answered by the app's :not-found (nil: a 404, empty).
 
    The app's pages are a map by name, {:orders/page {:address \"/orders/:order-id\" …}};
    the browser gets the same map from the page (the app puts it there), so

@@ -165,6 +165,10 @@
          (try (bridge/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
       "nil is not a choice: :no-rate-limits is written out")
+  (is (= :bridge/bad-options
+         (try (bridge/answer-message handlers {:find-key :remote-addr :buckets-before-cleanup 10 :buckets {}} {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
+              (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
+      "a limiter is make-message-limiter's, not a map written by hand")
   (testing "a message with no request (a REPL's): its steps find none, and nothing is counted"
     (is (= {:greetings/hello {:hello "Anna"}}
            (bridge/answer-message handlers :no-rate-limits nil {:greetings/hello {:name "Anna"}} {:wire wire :log log})))
@@ -224,8 +228,8 @@
                                                            (Thread/sleep 300)
                                                            (bridge/add-answer-to-context context "done"))}])}
         server   (bridge/start-server! (find-handler (bridge/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
-                                         (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500)
-                                         {:log log})
+                                       (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500)
+                                       {:log log})
         answer   (future (post-json (:port server) "{\"greetings/slow\":{}}"))]
     (deref started 5000 nil)
     (is (true? (bridge/stop-server! server)) "every request's thread had ended")
@@ -239,8 +243,8 @@
                                                           (Thread/sleep 5000)
                                                           (bridge/add-answer-to-context context "done"))}])}
         server  (bridge/start-server! (find-handler (bridge/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
-                                        (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000)
-                                        {:log log})
+                                      (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000)
+                                      {:log log})
         answer  (future (try (post-json (:port server) "{\"greetings/slow\":{}}") (catch Exception _ :cut)))
         _       (deref started 5000 nil)
         began   (System/currentTimeMillis)]
@@ -250,8 +254,8 @@
 
 (deftest a-body-over-the-setting-is-refused
   (let [server (bridge/start-server! (find-handler (bridge/make-routes-for-messages handlers settings (with-new-meter options)) 0 :post)
-                                       (assoc settings :max-body-bytes 16)
-                                       {:log log})]
+                                     (assoc settings :max-body-bytes 16)
+                                     {:log log})]
     (try
       (is (= 413 (first (post-json (:port server) "{\"greetings/hello\":{\"name\":\"Anna\"}}"))))
       (is (= 200 (first (post-json (:port server) "{\"x/y\":{}}"))) "within it, answered")
@@ -259,11 +263,11 @@
 
 (deftest the-server-s-error-answers-are-told-from-data
   (let [answer (bridge/answer-message handlers :no-rate-limits {}
-                                        {:greetings/hello {:name "Anna"}
-                                         :greetings/fail  {}
-                                         :shops/total     {:shop/id "seven"}
-                                         :nobody/home     {}}
-                                        {:wire wire :log log})]
+                                      {:greetings/hello {:name "Anna"}
+                                       :greetings/fail  {}
+                                       :shops/total     {:shop/id "seven"}
+                                       :nobody/home     {}}
+                                      {:wire wire :log log})]
     (is (= {:greetings/hello false :greetings/fail true :shops/total true :nobody/home true}
            (update-vals answer bridge/is-error-answer?))
         "a refusal, params that didn't fit, an unknown name: errors; the greeting: data")))

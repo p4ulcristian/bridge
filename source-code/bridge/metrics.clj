@@ -53,7 +53,7 @@
     (meter/record-in-histogram! meter :bridge/answer-seconds {:name message-name} seconds)))
 
 (defn note-nothing
-  "answer-message's: outside a server nothing is counted."
+  "answer-message's: it takes no meter, so no metrics are counted."
   [_message-name _outcome _seconds]
   nil)
 

@@ -16,6 +16,7 @@
    answer messages or run the server take the app's log under :log;
    bridge never decides how a line is written."
   (:require
+   #?(:clj [bridge.limits :as limits])
    [malli.core :as malli]
    [malli.error :as malli-error]))
 
@@ -200,13 +201,15 @@
   "The handler table: message name to handler."
   [:map-of :keyword handler-shape])
 
-(def rate-limits-outside-a-server-shape
-  "answer-message's rate limits: :no-rate-limits, written out, for a test
-   or the REPL; or a limiter of the caller's (make-message-limiter), which
-   counts each handler's :rate-limit as the server's does."
-  [:or
-   [:= :no-rate-limits]
-   [:map {:closed true} [:find-key fn?] [:buckets-before-cleanup [:int {:min 1}]] [:buckets some?]]])
+#?(:clj
+   (def message-limiter-shape
+     "answer-message's limiter: :no-rate-limits, written out, for a test or
+      the REPL; or a limiter of the caller's (make-message-limiter), which
+      counts each handler's :rate-limit as the server's does, in buckets of
+      its own."
+     [:or
+      [:= :no-rate-limits]
+      [:fn {:error/message "should be a limiter from make-message-limiter"} limits/is-limiter?]]))
 
 (def message-limiter-options-shape
   "make-message-limiter's options, every key required.
@@ -342,8 +345,9 @@
 (defn check-handlers [handlers]
   (check-data-for-shape "The handlers" :bridge/bad-handlers handlers-shape handlers))
 
-(defn check-rate-limits-outside-a-server [rate-limits]
-  (check-data-for-shape "The rate limits" :bridge/bad-options rate-limits-outside-a-server-shape rate-limits))
+#?(:clj
+   (defn check-message-limiter [limiter]
+     (check-data-for-shape "The limiter" :bridge/bad-options message-limiter-shape limiter)))
 
 (defn check-message-limiter-options [options]
   (check-data-for-shape "The options" :bridge/bad-options message-limiter-options-shape options))

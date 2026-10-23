@@ -108,7 +108,8 @@
 (def ^:private too-many {:error "Too many requests."})
 
 (defn- is-over-limit?
-  "limiter is the server's, or :no-rate-limits outside a server."
+  "limiter is :no-rate-limits (nothing is counted) or a limiter
+   (limits.clj): the server's, or one from make-message-limiter."
   [limiter request message-name {:keys [rate-limit]}]
   (and (not= :no-rate-limits limiter)
        rate-limit
@@ -136,9 +137,10 @@
 
 (defn answer-named-messages
   "The answer to a message: the same names, each with its handler's answer,
-   and :bridge/notes beside them when a handler has notes. limiter is the
-   server's (limits.clj), counting each handler's :rate-limit, or
-   :no-rate-limits, written out, where there is no server (tests, the REPL).
+   and :bridge/notes beside them when a handler has notes. limiter is a
+   limiter (limits.clj) counting each handler's :rate-limit: the server's,
+   or one from make-message-limiter for answer-message; or :no-rate-limits,
+   written out, and nothing is counted (tests, the REPL).
    wire is the app's, which the data comes in and the answers go out by;
    log the app's, which this message's log is made from, with a new
    request id as its context. The id isn't in the answer.

@@ -17,11 +17,19 @@
   (:import
    (java.util.concurrent ConcurrentHashMap)))
 
+(defrecord Limiter [find-key buckets-before-cleanup buckets])
+
 (defn make-limiter
   "A limiter that tells askers apart by (find-key request) and keeps up to
-   buckets-before-cleanup buckets before it drops the full ones."
+   buckets-before-cleanup buckets before it drops the full ones. Each
+   limiter has its own buckets."
   [find-key buckets-before-cleanup]
-  {:find-key find-key :buckets-before-cleanup buckets-before-cleanup :buckets (ConcurrentHashMap.)})
+  (->Limiter find-key buckets-before-cleanup (ConcurrentHashMap.)))
+
+(defn is-limiter?
+  "Whether x is a limiter made by make-limiter."
+  [x]
+  (instance? Limiter x))
 
 (defn- take-token [{:keys [tokens at]} now {:keys [max per-ms]}]
   (let [refilled (min max (+ tokens (* (- now at) (/ max per-ms))))]
