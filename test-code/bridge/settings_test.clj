@@ -5,7 +5,7 @@
    [clojure.test :refer [deftest is testing]]
    [bridge.api :as bridge]
    [bridge.test-log :as test-log :refer [log]]
-   [bridge.test-meter :refer [meter with-new-meter]]
+   [bridge.test-meter :refer [meter with-new-meter with-meter-for-answers]]
    [bridge.test-wire :refer [wire]]))
 
 (def ^:private settings
@@ -104,4 +104,4 @@
                      settings (with-new-meter options))))))
   (testing "answer-message checks them too"
     (is (= :bridge/bad-handlers
-           (:type (find-problems #(bridge/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} {:wire wire :log log})))))))
+           (:type (find-problems #(bridge/answer-message {:greetings/hello {:steps []}} :no-rate-limits {} {:greetings/hello {}} (with-meter-for-answers {:wire wire :log log}))))))))

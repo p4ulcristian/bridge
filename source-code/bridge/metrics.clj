@@ -1,9 +1,10 @@
 (ns bridge.metrics
   "bridge's metrics, declared on the app's meter by
-   make-routes-for-messages: each named message answered, by name, pipe and
-   outcome; the time to answer it, by name; the open sse and ws lines. The
-   names' set is the handler table's; a name outside it (one no handler
-   has) is counted as \"other\"."
+   make-routes-for-messages and by answer-message: each named message
+   answered, by name, pipe and outcome (answer-message's under pipe http,
+   as the same message over http); the time to answer it, by name; the
+   open sse and ws lines. The names' set is the handler table's; a name
+   outside it (one no handler has) is counted as \"other\"."
   (:require
    [meter.api :as meter]))
 
@@ -22,7 +23,9 @@
 
 (defn declare-metrics!
   "Declares bridge's metrics on the meter: the names' set is the
-   handlers', the answer time's buckets the settings'."
+   handlers', the answer time's buckets the :metric-buckets of the map
+   given (the settings, or answer-message's options). The same
+   declaration again is no change; another is refused by meter."
   [meter handlers {{:keys [answer-seconds]} :metric-buckets}]
   (let [names (set (keys handlers))]
     (meter/declare-metrics!
@@ -53,11 +56,6 @@
   (fn [message-name outcome seconds]
     (meter/add-to-counter! meter :bridge/messages-total {:name message-name :pipe pipe :outcome outcome} 1)
     (meter/record-in-histogram! meter :bridge/answer-seconds {:name message-name} seconds)))
-
-(defn note-nothing
-  "answer-message's: it takes no meter, so no metrics are counted."
-  [_message-name _outcome _seconds]
-  nil)
 
 (defn add-to-open-lines!
   "A line opened, +1; closed, -1."

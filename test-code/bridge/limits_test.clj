@@ -4,6 +4,7 @@
    [bridge.api :as bridge]
    [bridge.limits :as limits]
    [bridge.test-log]
+   [bridge.test-meter]
    [bridge.test-wire]))
 
 (deftest a-bucket-per-message-and-asker
@@ -64,7 +65,7 @@
   (let [handlers {:t/once {:steps [{:name :answer :enter #(bridge/add-answer-to-context % {:ok true})}]
                            :params-shape nil :answer-shape nil :refusals {} :rate-limit {:max 1 :per-ms 60000} :run-steps-in nil}}
         limiter  (bridge/make-message-limiter {:find-rate-limit-key #(:token %) :buckets-before-cleanup 100})
-        ask      #(bridge/answer-message handlers limiter {:token %} {:t/once {}} {:wire bridge.test-wire/wire :log bridge.test-log/log})]
+        ask      #(bridge/answer-message handlers limiter {:token %} {:t/once {}} (bridge.test-meter/with-meter-for-answers {:wire bridge.test-wire/wire :log bridge.test-log/log}))]
     (is (= {:t/once {:ok true}} (ask "a")))
     (let [{:t/keys [once]} (ask "a")]
       (is (= [:bridge/too-many true] [(:bridge/refused once) (< 59000 (get-in once [:bridge/data :retry-after-ms]) 60001)])

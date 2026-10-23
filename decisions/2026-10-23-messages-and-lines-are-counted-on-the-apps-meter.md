@@ -1,3 +1,5 @@
+> **Changed in part** by [Every answered message is counted on the meter, whichever door it came through](2026-10-23-every-answered-message-is-counted-on-the-meter-whichever-door.md) (2026-10-23, built on tidy-up, not released): `answer-message` takes the meter and `:metric-buckets` and counts each message as the http address does.
+
 > **Changed in part** by [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md) (2026-10-23, v0.7.1): an sse line a browser leaves is counted out at its next ping or send, at most one `:ping-every-ms` later.
 
 # Each message and open line is counted on the app's meter

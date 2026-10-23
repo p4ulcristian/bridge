@@ -24,3 +24,13 @@
    bridge's metrics, and the tests' handler tables differ."
   [options]
   (assoc options :meter (make-test-meter)))
+
+(def metric-buckets
+  "The tests' :metric-buckets for answer-message."
+  {:answer-seconds [0.05 1]})
+
+(defn with-meter-for-answers
+  "answer-message's options with a new meter and the tests' buckets: the
+   tests' handler tables differ, and a meter takes one."
+  [options]
+  (assoc options :meter (make-test-meter) :metric-buckets metric-buckets))

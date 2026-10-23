@@ -1,7 +1,7 @@
 (ns bridge.metrics-test
   "bridge's metrics on the app's meter: each named message by name, pipe
    and outcome, its answer time, the open lines; a name no handler has is
-   \"other\"."
+   \"other\". answer-message counts as the http address does."
   (:require
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
@@ -116,6 +116,64 @@
                (find-metric-lines meter "bridge_answer_seconds_bucket{name=\"t/ok\""))))
       (finally (bridge/stop-server! server)))))
 
-(deftest answer-message-counts-nothing
-  (is (= {:t/ok {:hello "Anna"}}
-         (bridge/answer-message handlers :no-rate-limits {} {:t/ok {}} {:wire wire :log log}))))
+(defn- answer-on [meter limiter message]
+  (bridge/answer-message handlers limiter {:token "one asker"} message
+                         {:wire wire :log log :meter meter :metric-buckets (:metric-buckets settings)}))
+
+(deftest answer-message-counts-as-the-http-address-does
+  (let [meter   (make-test-meter)
+        limiter (bridge/make-message-limiter {:find-rate-limit-key #(:token %) :buckets-before-cleanup 10})]
+    (answer-on meter limiter {:t/ok {} :t/invalid {:shop/id "seven"} :t/refused {} :t/too-many {}
+                              :t/failed {} :t/unfit {} :nobody/home {}})
+    (answer-on meter limiter {:t/too-many {}})
+    (testing "each outcome under pipe http, refusals and failures too; a name no handler has is other"
+      (is (= ["bridge_messages_total{name=\"other\",outcome=\"no-handler\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/failed\",outcome=\"failed\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/invalid\",outcome=\"invalid\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/ok\",outcome=\"ok\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/refused\",outcome=\"refused\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/too-many\",outcome=\"ok\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/too-many\",outcome=\"too-many\",pipe=\"http\"} 1"
+              "bridge_messages_total{name=\"t/unfit\",outcome=\"unfit\",pipe=\"http\"} 1"]
+             (find-metric-lines meter "bridge_messages_total"))))
+    (testing "each answer's time, by name, in the buckets given"
+      (is (= ["bridge_answer_seconds_bucket{name=\"t/ok\",le=\"0.05\"} 1"
+              "bridge_answer_seconds_bucket{name=\"t/ok\",le=\"1.0\"} 1"
+              "bridge_answer_seconds_bucket{name=\"t/ok\",le=\"+Inf\"} 1"]
+             (find-metric-lines meter "bridge_answer_seconds_bucket{name=\"t/ok\""))))))
+
+(deftest answer-message-and-the-routes-count-into-the-same-series
+  (let [meter  (make-test-meter)
+        routes (bridge/make-routes-for-messages handlers settings
+                                                  {:wire wire :log log :meter meter
+                                                   :find-rate-limit-key (constantly "one asker")
+                                                   :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
+        server (bridge/start-server! (bridge/make-ring-handler-from-routes routes {:files nil :not-found nil}) settings {:log log})]
+    (try
+      (post-json (:port server) "{\"t/refused\":{}}")
+      (answer-on meter :no-rate-limits {:t/refused {}})
+      (is (= ["bridge_messages_total{name=\"t/refused\",outcome=\"refused\",pipe=\"http\"} 2"]
+             (find-metric-lines meter "bridge_messages_total"))
+          "the same message, by the http address or by answer-message: one series")
+      (finally (bridge/stop-server! server)))))
+
+(deftest answer-message-takes-the-meter-the-routes-declared
+  (let [meter        (make-test-meter)
+        refused-type #(try (%) nil (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))
+        options      {:wire wire :log log :meter meter :metric-buckets (:metric-buckets settings)}]
+    (answer-on meter :no-rate-limits {:t/ok {}})
+    (is (nil? (refused-type #(answer-on meter :no-rate-limits {:t/ok {}})))
+        "the same table and buckets again: no change")
+    (is (= :meter/bad-metrics
+           (refused-type #(bridge/answer-message {:t/other (make-handler (answer-with {}))} :no-rate-limits {} {:t/other {}} options)))
+        "another table of names on the same meter")
+    (is (= :meter/bad-metrics
+           (refused-type #(bridge/answer-message handlers :no-rate-limits {} {:t/ok {}}
+                                                 (assoc options :metric-buckets {:answer-seconds [0.5]}))))
+        "other buckets on the same meter")
+    (is (= :meter/not-a-meter
+           (refused-type #(bridge/answer-message handlers :no-rate-limits {} {:t/ok {}} (assoc options :meter {}))))
+        "a meter meter didn't make")
+    (is (= ["bridge_messages_total{name=\"t/ok\",outcome=\"ok\",pipe=\"http\"} 2"]
+           (find-metric-lines meter "bridge_messages_total"))
+        "a refused call counts nothing")))

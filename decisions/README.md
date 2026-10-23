@@ -29,16 +29,17 @@ All but the last eleven were made while mailroom was three libraries inside Grou
 - [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md), added to by [The browser passes the server's error answers past the answer shape](2026-10-23-the-browser-passes-the-servers-error-answers-past-the-shape.md), changed in part by [A refusal is a named reason](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md)
 - [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md)
 - [A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
-- [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
+- [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md) and [Every answered message is counted on the meter, whichever door](2026-10-23-every-answered-message-is-counted-on-the-meter-whichever-door.md)
 - [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md), changed in part by [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md)
 - [A plain route is rate-limited by the same buckets, through the api](2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)
 - [mailroom is renamed bridge](2026-10-23-mailroom-is-renamed-bridge.md)
 - [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md)
-- [A message answered off the server's addresses is limited by the caller's limiter](2026-10-23-a-message-answered-off-the-servers-addresses-is-limited-by-the-callers-limiter.md) (built 2026-10-23, v0.7.6, recorded later)
+- [A message answered off the server's addresses is limited by the caller's limiter](2026-10-23-a-message-answered-off-the-servers-addresses-is-limited-by-the-callers-limiter.md) (built 2026-10-23, v0.7.6, recorded later), changed in part by [Every answered message is counted on the meter, whichever door](2026-10-23-every-answered-message-is-counted-on-the-meter-whichever-door.md)
 - [`:not-found` is the app's](2026-10-23-not-found-is-the-apps.md) (built 2026-10-23, v0.7.7, recorded later)
 - [A message may come with no request](2026-10-23-a-message-may-come-with-no-request.md) (built on tidy-up, not released)
 - [The browser passes the server's error answers past the answer shape](2026-10-23-the-browser-passes-the-servers-error-answers-past-the-shape.md) (built on tidy-up, not released), changed in part by [A refusal is a named reason](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md)
 - [A refusal is a named reason, declared on its handler](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md) (built on tidy-up, not released)
+- [Every answered message is counted on the meter, whichever door it came through](2026-10-23-every-answered-message-is-counted-on-the-meter-whichever-door.md) (built on tidy-up, not released)
 
 ## Replaced
 

@@ -24,6 +24,13 @@
 ;; -----------------------------------------------------------------------------
 ;; The server's settings
 
+(def metric-buckets-entry
+  "The upper bounds of bridge's histograms, in seconds, ascending (meter
+   checks them): {:answer-seconds [0.005 … 10]}, the time to answer one
+   named message. The settings' and answer-message's, the same."
+  [:metric-buckets [:map {:closed true}
+                    [:answer-seconds [:vector {:min 1} number?]]]])
+
 (def settings-shape
   "The settings, every key required.
    :ip, :port: where the server listens; port 0 picks a free one.
@@ -94,8 +101,7 @@
    [:stop-wait-ms [:int {:min 0}]]
    [:stop-wait-after-cut-ms [:int {:min 0}]]
    [:rate-limit-buckets-before-cleanup [:int {:min 1}]]
-   [:metric-buckets [:map {:closed true}
-                     [:answer-seconds [:vector {:min 1} number?]]]]])
+   metric-buckets-entry])
 
 (defn- pings-before-idle-timeout? [{:keys [idle-timeout-ms ping-every-ms]}]
   (or (not (int? idle-timeout-ms)) (not (int? ping-every-ms)) (> idle-timeout-ms ping-every-ms)))
@@ -235,10 +241,16 @@
 (def answer-options-shape
   "answer-message's options, every key required. :wire: the app's wire,
    which turns the message's data into shaped data and the answer into
-   JSON data, as over http. :log: the app's log, as the routes take it."
+   JSON data, as over http. :log: the app's log, as the routes take it.
+   :meter: the app's meter (a test's own in a test), which each named
+   message is counted into as the server's http address counts it.
+   :metric-buckets: the settings' (the routes' on the same meter), as
+   bridge's metrics are declared with them."
   [:map {:closed true}
    wire-entry
-   log-entry])
+   log-entry
+   meter-entry
+   metric-buckets-entry])
 
 (def server-options-shape
   "start-server!'s options, every key required. :log: the app's log; a

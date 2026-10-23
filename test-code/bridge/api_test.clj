@@ -6,7 +6,7 @@
    [logbook.api :as logbook]
    [bridge.api :as bridge]
    [bridge.test-log :as test-log :refer [log]]
-   [bridge.test-meter :refer [meter with-new-meter]]
+   [bridge.test-meter :refer [meter with-new-meter with-meter-for-answers]]
    [bridge.test-wire :refer [wire]])
   (:import
    (java.net URI)
@@ -177,29 +177,29 @@
 
 (deftest answer-message-says-there-are-no-rate-limits
   (let [limited {:greetings/hello (assoc (make-handler [say-hello]) :rate-limit {:max 1 :per-ms 60000})}
-        ask     #(bridge/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}} {:wire wire :log log})]
+        ask     #(bridge/answer-message limited :no-rate-limits {:remote-addr "1.1.1.1"} {:greetings/hello {:name "Anna"}} (with-meter-for-answers {:wire wire :log log}))]
     (is (= [{:greetings/hello {:hello "Anna"}} {:greetings/hello {:hello "Anna"}}] [(ask) (ask)])
         "outside a server nothing counts, and the call says so"))
   (is (= :bridge/bad-options
-         (try (bridge/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
+         (try (bridge/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} (with-meter-for-answers {:wire wire :log log}))
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
       "nil is not a choice: :no-rate-limits is written out")
   (is (= :bridge/bad-options
-         (try (bridge/answer-message handlers {:find-key :remote-addr :buckets-before-cleanup 10 :buckets {}} {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
+         (try (bridge/answer-message handlers {:find-key :remote-addr :buckets-before-cleanup 10 :buckets {}} {} {:greetings/hello {:name "Anna"}} (with-meter-for-answers {:wire wire :log log}))
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
       "a limiter is make-message-limiter's, not a map written by hand")
-  (testing "a message with no request (a REPL's): its steps find none, and nothing is counted"
+  (testing "a message with no request (a REPL's): its steps find none, and no rate limit counts"
     (is (= {:greetings/hello {:hello "Anna"}}
-           (bridge/answer-message handlers :no-rate-limits nil {:greetings/hello {:name "Anna"}} {:wire wire :log log})))
+           (bridge/answer-message handlers :no-rate-limits nil {:greetings/hello {:name "Anna"}} (with-meter-for-answers {:wire wire :log log}))))
     (is (= :bridge/bad-options
            (try (bridge/answer-message handlers (bridge/make-message-limiter {:find-rate-limit-key #(:remote-addr %) :buckets-before-cleanup 10})
-                                       nil {:greetings/hello {:name "Anna"}} {:wire wire :log log})
+                                       nil {:greetings/hello {:name "Anna"}} (with-meter-for-answers {:wire wire :log log}))
                 (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
         "a limiter tells askers apart by their request"))
   (let [{:keys [type errors]} (try (bridge/answer-message handlers :no-rate-limits {} {:greetings/hello {:name "Anna"}} {})
                                    (catch clojure.lang.ExceptionInfo e (ex-data e)))]
-    (is (= :bridge/bad-options type) "bridge makes no wire and no log: the caller hands its own in")
-    (is (= #{:wire :log} (set (keys errors))))))
+    (is (= :bridge/bad-options type) "bridge makes no wire, no log and no meter: the caller hands its own in")
+    (is (= #{:wire :log :meter :metric-buckets} (set (keys errors))))))
 
 (def ^:private person-id #uuid "41000000-0000-4000-8000-000000000041")
 
@@ -222,7 +222,7 @@
 
 (deftest each-message-gets-a-log-with-its-own-request-id
   (reset! test-log/lines [])
-  (let [ask #(bridge/answer-message steps-that-log :no-rate-limits {} % {:wire wire :log log})]
+  (let [ask #(bridge/answer-message steps-that-log :no-rate-limits {} % (with-meter-for-answers {:wire wire :log log}))]
     (let [answer (ask {:greetings/noted {} :greetings/broken {}})]
       (is (= {:greetings/noted "noted" :greetings/broken {:bridge/refused :bridge/failed :bridge/data nil}}
              (update answer :greetings/broken dissoc :bridge/request-id)))
@@ -290,7 +290,7 @@
                                        :greetings/fail  {}
                                        :shops/total     {:shop/id "seven"}
                                        :nobody/home     {}}
-                                      {:wire wire :log log})]
+                                      (with-meter-for-answers {:wire wire :log log}))]
     (is (= {:greetings/hello false :greetings/fail true :shops/total true :nobody/home true}
            (update-vals answer bridge/is-error-answer?))
         "a failure, params that didn't fit, an unknown name: refusals; the greeting: data"))
@@ -324,7 +324,7 @@
 
 (deftest a-step-refuses-with-a-reason-its-handler-declares
   (reset! test-log/lines [])
-  (let [answer (bridge/answer-message refusing :no-rate-limits {} {:orders/ship {} :orders/no-address {}} {:wire wire :log log})]
+  (let [answer (bridge/answer-message refusing :no-rate-limits {} {:orders/ship {} :orders/no-address {}} (with-meter-for-answers {:wire wire :log log}))]
     (is (= {:orders/ship       {:bridge/refused :order/already-shipped :bridge/data {:order/shipped-at "2026-10-20T08:30:00Z"}}
             :orders/no-address {:bridge/refused :order/no-address :bridge/data nil}}
            (update-vals answer #(dissoc % :bridge/request-id)))
@@ -341,7 +341,7 @@
   (reset! test-log/lines [])
   (let [answer (bridge/answer-message refusing :no-rate-limits {}
                                       {:orders/undeclared {} :orders/unfit {} :orders/nil-data {} :orders/silent {} :orders/leaky {}}
-                                      {:wire wire :log log})]
+                                      (with-meter-for-answers {:wire wire :log log}))]
     (is (= {:orders/undeclared :bridge/failed :orders/unfit :bridge/failed :orders/nil-data :bridge/failed
             :orders/silent :bridge/failed :orders/leaky :bridge/failed}
            (update-vals answer :bridge/refused))
@@ -376,7 +376,7 @@
           (.join (.sendClose socket 1000 "done")))))))
 
 (deftest a-handler-declares-its-reasons
-  (let [problems #(try (bridge/answer-message % :no-rate-limits {} {} {:wire wire :log log}) nil
+  (let [problems #(try (bridge/answer-message % :no-rate-limits {} {} (with-meter-for-answers {:wire wire :log log})) nil
                        (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (testing ":refusals is written out, {} for none"
       (is (= {:t/x {:refusals ["missing required key"]}}

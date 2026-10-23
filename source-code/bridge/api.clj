@@ -84,7 +84,9 @@
    on http or ws; bridge_answer_seconds{name}, the time to answer it,
    bucketed by the settings' :metric-buckets; bridge_open_lines{pipe},
    the open sse and ws lines. A name no handler has is counted as
-   \"other\".
+   \"other\". answer-message counts on the meter it is given too, each
+   message as the same message over http: a token's call answered on the
+   app's own route, the REPL's, a test's (on a meter of its own).
 
    A line (an open sse or ws connection) is
    {:bridge/channel … :bridge/request … :bridge/wire …}: it carries
@@ -280,8 +282,15 @@
    a request to tell askers apart. Notes, when a handler has them, are
    beside the answers under :bridge/notes. Options, every key required:
    :wire, the app's wire; :log, the app's log, which the message's log is
-   made from. The handlers, the limiter and the options are checked first.
-   No metrics are counted: answer-message takes no meter."
+   made from; :meter, the app's meter (a test's own in a test), which each
+   named message is counted into exactly as the server's http address
+   counts it (bridge_messages_total by name, pipe \"http\" and outcome,
+   bridge_answer_seconds by name; bridge.metrics); :metric-buckets, the
+   settings' (the routes' on the same meter), which bridge's metrics are
+   declared with here, no change when the routes declared them the same
+   way, refused by meter when differently (another table of names, other
+   buckets: :meter/bad-metrics). The handlers, the limiter and the options
+   are checked first."
   [handlers limiter request message options]
   (settings/check-handlers handlers)
   (settings/check-message-limiter limiter)
@@ -289,8 +298,10 @@
   (when (and (nil? request) (not= :no-rate-limits limiter))
     (throw (ex-info "A message with no request has no asker to count: its limiter is :no-rate-limits"
                     {:type :bridge/bad-options})))
-  ;; answer-message takes no meter: no metrics are counted
-  (messages/answer-named-messages (:wire options) (:log options) handlers limiter metrics/note-nothing request message))
+  (metrics/declare-metrics! (:meter options) handlers options)
+  ;; counted as the server's http address counts the same message
+  (messages/answer-named-messages (:wire options) (:log options) handlers limiter
+                                  (metrics/make-note-answer (:meter options) :http) request message))
 
 ;; -----------------------------------------------------------------------------
 ;; Answers
