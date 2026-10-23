@@ -38,6 +38,7 @@ All but the last eleven were made while mailroom was three libraries inside Grou
 - [`:not-found` is the app's](2026-10-23-not-found-is-the-apps.md) (built 2026-10-23, v0.7.7, recorded later)
 - [A message may come with no request](2026-10-23-a-message-may-come-with-no-request.md) (built on tidy-up, not released)
 - [The browser passes the server's error answers past the answer shape](2026-10-23-the-browser-passes-the-servers-error-answers-past-the-shape.md) (built on tidy-up, not released)
+- [A refusal is a named reason, declared on its handler](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md) (not built yet)
 
 ## Replaced
 
