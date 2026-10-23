@@ -14,10 +14,10 @@
   io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
   ;; logbook: the app makes its log and hands it in; each message gets one that
   ;; knows its request id (the server's side only)
-  io.github.p4ulcristian/logbook    {:git/tag "v0.1.1" :git/sha "51a2c93"}
+  io.github.p4ulcristian/logbook    {:git/tag "v0.1.2" :git/sha "823f8fc"}
   ;; meter: the app makes its meter and hands it in; mailroom declares its
   ;; metrics on it and counts each message and open line (the server's side only)
-  io.github.p4ulcristian/meter      {:git/tag "v0.1.3" :git/sha "b71484d"}
+  io.github.p4ulcristian/meter      {:git/tag "v0.1.4" :git/sha "bf81c46"}
   ;; the settings, options, handlers and shapes, checked before anything runs
   metosin/malli                     {:mvn/version "0.20.3"}}
 
