@@ -12,7 +12,7 @@
   metosin/reitit-frontend           {:mvn/version "0.11.0"}
   ;; wire: data that crosses an edge comes back as what it was; the app makes
   ;; the wire and hands it in
-  io.github.p4ulcristian/wire       {:git/tag "v0.2.0" :git/sha "d66b7cb"}
+  io.github.p4ulcristian/wire       {:git/tag "v0.2.1" :git/sha "900a84d"}
   ;; logbook: the app makes its log and hands it in; each message gets one that
   ;; knows its request id (the server's side only)
   io.github.p4ulcristian/logbook    {:git/tag "v0.1.2" :git/sha "823f8fc"}
