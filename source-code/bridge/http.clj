@@ -13,10 +13,15 @@
    :headers {"content-type" "application/json" "cache-control" "no-store"}
    :body    (wire/turn-data-into-json-text wire data)})
 
-(defn- read-message [wire request]
-  (try (let [message (wire/turn-json-text-into-data wire (slurp (:body request) :encoding "UTF-8"))]
-         (when (map? message) message))
-       (catch Exception _ nil)))
+(defn- read-message
+  "The body's named messages, or nil when it isn't a JSON object. Reading
+   the body is outside the try: a body over :max-body-bytes fails there,
+   and Jetty answers it 413."
+  [wire request]
+  (let [text (slurp (:body request) :encoding "UTF-8")]
+    (try (let [message (wire/turn-json-text-into-data wire text)]
+           (when (map? message) message))
+         (catch Exception _ nil))))
 
 (defn make-ring-handler-for-http
   "A Ring handler that answers each named message in the body by its

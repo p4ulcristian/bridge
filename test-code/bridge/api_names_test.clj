@@ -15,6 +15,7 @@
            send-message-on-sse-line!
            send-message-on-ws-line!
            is-line-open?
+           close-line!
            answer-message
            is-error-answer?
            make-server-routes-for-pages

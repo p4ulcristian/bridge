@@ -1,3 +1,5 @@
+> **Changed in part** by [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md) (2026-10-23, v0.7.5): `start-server!`'s log gets a failure no step caught, `:bridge/server-error`; there is no server warning, Jetty's own lines go to SLF4J.
+
 > **Changed in part** by [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md) (2026-10-23, v0.7.0): `make-routes-for-messages` also takes `:meter`, the app's meter; `start-server!` and `answer-message` don't.
 
 # The app passes its log; each message gets one that knows its request

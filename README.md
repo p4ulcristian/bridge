@@ -15,8 +15,9 @@ by name, on both sides.
 io.github.p4ulcristian/bridge {:git/tag "v0.7.4" :git/sha "4f5c808"}
 ```
 
-Needs http-kit, reitit (reitit-ring on the server, reitit-frontend in the
-browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
+Needs Jetty 12 through [rj9a](https://github.com/sunng87/ring-jetty9-adapter)
+(no servlet layer; [why](decisions/2026-10-23-the-server-is-jetty-12-through-rj9a.md)),
+reitit (reitit-ring on the server, reitit-frontend in the browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
 types across the edge), and on the server
 [logbook](https://github.com/p4ulcristian/logbook) (the app's log, handed
 down) and [meter](https://github.com/p4ulcristian/meter) (the app's
@@ -36,8 +37,10 @@ with a new random `{:request-id "…"}` as its context; every step's context
 holds it at `:bridge/log`, and the app's wire at `:bridge/wire`. A step
 that learns more (who is asking) puts a log with more context back at
 `:bridge/log` for the steps after it. A handler that throws is written
-there, `:bridge/handler-failed`; http-kit's own errors and warnings go to
-`start-server!`'s log ([why](decisions/2026-10-22-the-app-passes-its-log.md)).
+there, `:bridge/handler-failed`; a failure no step caught goes to
+`start-server!`'s log, `:bridge/server-error`
+([why](decisions/2026-10-22-the-app-passes-its-log.md)). Jetty's own lines go
+to SLF4J, to whatever the app puts behind it.
 
 And with the meter: `make-routes-for-messages` takes the app's meter under
 `:meter` and declares bridge's metrics on it
@@ -56,8 +59,8 @@ The names are the handler table's: one no handler has is counted as
 | server | `settings-shape` | the settings as a malli shape, every key required |
 | server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`, `:log` and `:meter`; a handler's `:rate-limit` counted per asker |
 | server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none) |
-| server | `start-server!` `stop-server!` | http-kit, every request on a virtual thread; `{:log log}` |
-| server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` | the server sends on an open line by itself, by the wire the line keeps |
+| server | `start-server!` `stop-server!` | Jetty 12, every request on a virtual thread; `{:log log}`; a stop closes the sse lines, lets running requests finish, then cuts |
+| server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` `close-line!` | the server sends on an open line by itself, by the wire the line keeps, or closes it; a line the browser left is closed when its socket ends |
 | server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire :log log}`) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `make-rate-limited-ring-handler` | a plain route (not a message) behind its own limiter, the same buckets, `429` over it ([why](decisions/2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)) |
@@ -100,8 +103,10 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    :client-address-header "x-forwarded-for"            ; nil when no proxy is in front
    :server-header nil                                  ; the Server header, nil for none
    :max-body-bytes 8388608                             ; a bigger request body is refused, 413
-   :max-header-line-bytes 8192                         ; a longer request or header line, 414
+   :max-request-head-bytes 8192                        ; a bigger request line and headers, 431 (a longer address, 414)
    :max-ws-message-bytes 4194304                       ; the largest message a browser sends on ws
+   :idle-timeout-ms 60000                              ; a connection silent this long is closed; longer than :ping-every-ms
+   :threads {:min 8 :max 50 :idle-timeout-ms 60000}    ; Jetty's own platform threads; requests run on virtual ones
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000                                ; so proxies don't cut idle lines
    :sse-reconnect-after-ms 3000                        ; the browser reopens a broken sse line after this (sent as retry:)
@@ -141,7 +146,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
             :meter               meter          ; the app's (meter's): bridge's metrics are declared on it here
             :find-rate-limit-key #(bridge/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
-            :on-sse-close        forget-line!   ; once a line; a browser gone is seen by the next ping
+            :on-sse-close        forget-line!   ; once a line; a browser gone is seen when its socket ends
             :on-ws-open          nil
             :on-ws-close         nil})
           (bridge/make-server-routes-for-pages pages page-handler))
@@ -149,7 +154,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
              :hashed-name-min-hex-digits 8           ; main.3F9A0C1D.js is hashed
              :hashed-file-cache-seconds  31536000}}) ; and kept a year; any other file: no-cache
    settings
-   {:log log}))                                   ; http-kit's errors and warnings
+   {:log log}))                                   ; failures no step caught
 
 ;; the browser, with the same shapes from a .cljc file, both written out for
 ;; every name it sends or gets; the addresses, :sse-reconnect-after-ms and
@@ -167,16 +172,16 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
     (.then (fn [{:orders/keys [of-shop]}] …)))
 
 (bridge/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
-                         {:wire               wire
-                          :on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
-                          :reconnect-after-ms sse-reconnect-after-ms})
+                       {:wire               wire
+                        :on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
+                        :reconnect-after-ms sse-reconnect-after-ms})
 (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
-                        {:wire wire :reopen-after-ms ws-reopen-after-ms})
+                      {:wire wire :reopen-after-ms ws-reopen-after-ms})
 (bridge/start-following-address! pages
-                                   {:on-page               (fn [page scroll] (draw! page) (bridge/scroll-as-told! scroll))
-                                    :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
-                                    :may-leave?            #(js/confirm "Leave without saving?")   ; or nil
-                                    :languages             nil})   ; or dictionary's functions and the page's language
+                                 {:on-page               (fn [page scroll] (draw! page) (bridge/scroll-as-told! scroll))
+                                  :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
+                                  :may-leave?            #(js/confirm "Leave without saving?")   ; or nil
+                                  :languages             nil})   ; or dictionary's functions and the page's language
 (bridge/go-to-page! :orders/page {:order-id 42} {:tab :notes})   ; path params and query, {} for none
 ```
 

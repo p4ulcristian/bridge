@@ -16,7 +16,8 @@
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
    :client-address-header nil :server-header nil
-   :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
+   :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
+   :idle-timeout-ms 120000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
@@ -84,9 +85,8 @@
                  (find-metric-lines meter "bridge_open_lines"))))
         (.join (.sendClose socket 1000 "done"))
         (.close sse)
-        ;; only ws here: http-kit 2.8.1 calls no :on-close when a browser
-        ;; leaves an sse line, so bridge sees it at the next ping, 25 s away
-        ;; here (bridge.sse-close-test)
+        ;; only ws here: a browser leaving an sse line is seen at its next
+        ;; write, the ping 25 s away here (bridge.sse-close-test)
         (wait-until #(= "bridge_open_lines{pipe=\"ws\"} 0" (second (find-metric-lines meter "bridge_open_lines"))))
         (testing "and no longer once closed"
           (is (= "bridge_open_lines{pipe=\"ws\"} 0" (second (find-metric-lines meter "bridge_open_lines"))))))

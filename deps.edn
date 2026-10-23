@@ -4,8 +4,9 @@
 {:paths ["source-code"]
 
  :deps
- {;; the server: http-kit, every request on a virtual thread; sse and ws built in
-  http-kit/http-kit                 {:mvn/version "2.8.1"}
+ {;; the server: Jetty 12 through rj9a (no servlet layer), every request on a
+  ;; virtual thread; ws through Ring's websocket protocols, sse a streamed answer
+  info.sunng/ring-jetty9-adapter    {:mvn/version "0.40.5"}
   ;; the routes: reitit on the server, reitit-frontend in the browser (ClojureScript sources)
   metosin/reitit-ring               {:mvn/version "0.11.0"}
   metosin/reitit-frontend           {:mvn/version "0.11.0"}

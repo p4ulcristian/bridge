@@ -11,7 +11,8 @@
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
    :client-address-header nil :server-header nil
-   :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
+   :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
+   :idle-timeout-ms 120000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
    :addresses {:http "/mail/http" :sse "/mail/sse" :ws "/mail/ws"}
    :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
    :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
@@ -43,7 +44,13 @@
                    :ping-ms)))
   (testing "start-server! checks them too, before it starts"
     (is (= :bridge/bad-settings (:type (find-problems #(bridge/start-server! identity (dissoc settings :ip) {:log log}))))))
-  (testing "and its options: the app's log, which http-kit's errors go to"
+  (testing "a pinged line outlives the idle timeout"
+    (is (= {:idle-timeout-ms ["should have :idle-timeout-ms longer than :ping-every-ms, so a pinged line is never cut"]}
+           (:errors (find-problems #(bridge/start-server! identity (assoc settings :idle-timeout-ms 25000) {:log log}))))))
+  (testing "the threads: at least :min, at most :max"
+    (is (= {:threads ["should have :min at most :max"]}
+           (:errors (find-problems #(bridge/start-server! identity (assoc-in settings [:threads :min] 51) {:log log}))))))
+  (testing "and its options: the app's log, which failures no step caught go to"
     (is (= {:type :bridge/bad-options :errors {:log ["missing required key"]}}
            (select-keys (find-problems #(bridge/start-server! identity settings {})) [:type :errors])))))
 

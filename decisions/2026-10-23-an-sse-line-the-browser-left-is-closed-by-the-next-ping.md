@@ -1,5 +1,7 @@
 # An sse line the browser left is closed by its next ping or send, and its close is run once
 
+> **Changed in part** by [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md) (2026-10-23, v0.7.5): on Jetty a line the browser left is closed when its socket ends (Jetty's fill interest), a failed write as the fallback; the reflection into http-kit is gone; the line is still closed once.
+
 > **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
 
 > Changes in part [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md): an sse line a browser leaves is counted out of `mailroom_open_lines` too. Since v0.7.1.

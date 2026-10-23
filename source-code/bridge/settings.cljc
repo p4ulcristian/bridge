@@ -33,9 +33,16 @@
    server faces browsers itself.
    :server-header: what the Server header says, nil for none.
    :max-body-bytes: the largest request body; a bigger one is refused (413).
-   :max-header-line-bytes: the longest request line or header line; a
-   longer one is refused (414).
+   :max-request-head-bytes: the largest request line and headers together;
+   bigger ones are refused (431; an address too long for it, 414).
    :max-ws-message-bytes: the largest message a browser may send on ws.
+   :idle-timeout-ms: how long a connection may pass nothing before it is
+   closed, an open sse or ws line too; longer than :ping-every-ms, so a
+   line the server pings is never cut.
+   :threads: Jetty's own platform threads, which accept connections and
+   read and write sockets: {:min … :max … :idle-timeout-ms …}, a thread
+   idle that long is ended (down to :min). Every request's work, and every
+   ws message's answer, runs on a virtual thread of its own, not on these.
    :addresses: where the three pipes are, {:http … :sse … :ws …}.
    :ping-every-ms: how often an idle sse line gets a comment and a ws line
    {:bridge/ping {}}, so proxies don't cut them.
@@ -65,8 +72,16 @@
    [:client-address-header [:maybe :string]]
    [:server-header [:maybe :string]]
    [:max-body-bytes [:int {:min 1}]]
-   [:max-header-line-bytes [:int {:min 1}]]
+   [:max-request-head-bytes [:int {:min 1}]]
    [:max-ws-message-bytes [:int {:min 1}]]
+   [:idle-timeout-ms [:int {:min 1}]]
+   [:threads [:and
+              [:map {:closed true}
+               [:min [:int {:min 1}]]
+               [:max [:int {:min 1}]]
+               [:idle-timeout-ms [:int {:min 1}]]]
+              [:fn {:error/message "should have :min at most :max"}
+               (fn [{:keys [min max]}] (or (not (int? min)) (not (int? max)) (<= min max)))]]]
    [:addresses [:map {:closed true}
                 [:http :string]
                 [:sse :string]
@@ -79,6 +94,16 @@
    [:rate-limit-buckets-before-cleanup [:int {:min 1}]]
    [:metric-buckets [:map {:closed true}
                      [:answer-seconds [:vector {:min 1} number?]]]]])
+
+(defn- pings-before-idle-timeout? [{:keys [idle-timeout-ms ping-every-ms]}]
+  (or (not (int? idle-timeout-ms)) (not (int? ping-every-ms)) (> idle-timeout-ms ping-every-ms)))
+
+(def ^:private checked-settings-shape
+  "The settings, and that a pinged line outlives the idle timeout."
+  [:and settings-shape
+   [:fn {:error/message "should have :idle-timeout-ms longer than :ping-every-ms, so a pinged line is never cut"
+         :error/path    [:idle-timeout-ms]}
+    pings-before-idle-timeout?]])
 
 ;; -----------------------------------------------------------------------------
 ;; The server's options and data
@@ -185,8 +210,8 @@
    log-entry])
 
 (def server-options-shape
-  "start-server!'s options, every key required. :log: the app's log;
-   http-kit's own errors and warnings are written to it."
+  "start-server!'s options, every key required. :log: the app's log; a
+   failure no step caught is written to it."
   [:map {:closed true}
    log-entry])
 
@@ -287,7 +312,7 @@
   data)
 
 (defn check-settings [settings]
-  (check-data-for-shape "The settings" :bridge/bad-settings settings-shape settings))
+  (check-data-for-shape "The settings" :bridge/bad-settings checked-settings-shape settings))
 
 (defn check-routes-options [options]
   (check-data-for-shape "The options" :bridge/bad-options routes-options-shape options))

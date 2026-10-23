@@ -20,7 +20,8 @@
 
      (def settings {:ip \"0.0.0.0\" :port 8080 :proxy-protocol :disable
                     :client-address-header nil :server-header nil
-                    :max-body-bytes 8388608 :max-header-line-bytes 8192 :max-ws-message-bytes 4194304
+                    :max-body-bytes 8388608 :max-request-head-bytes 8192 :max-ws-message-bytes 4194304
+                    :idle-timeout-ms 60000 :threads {:min 8 :max 50 :idle-timeout-ms 60000}
                     :addresses {:http \"/mail/http\" :sse \"/mail/sse\" :ws \"/mail/ws\"}
                     :ping-every-ms 25000 :sse-reconnect-after-ms 3000 :ws-reopen-after-ms 1000
                     :stop-wait-ms 10000 :stop-wait-after-cut-ms 1000
@@ -54,10 +55,11 @@
    request id as its context ({:request-id \"…\"}), and :bridge/wire,
    the app's wire. A step that learns more (who is asking) puts a log with
    more context back at :bridge/log, for the steps after it. A handler's
-   failure is written to that log, :error :bridge/handler-failed;
-   http-kit's own errors and warnings to start-server!'s :log,
-   :bridge/server-error and :bridge/server-warning. bridge writes
-   nowhere else.
+   failure is written to that log, :error :bridge/handler-failed; a
+   failure no step caught (outside every handler's steps, or a ws message
+   that isn't JSON) to start-server!'s :log, :bridge/server-error. bridge
+   writes nowhere else; Jetty's own lines go to SLF4J, to whatever the app
+   puts behind it.
 
    make-routes-for-messages declares bridge's metrics on the app's meter,
    its :meter, and counts into it (bridge.metrics):
@@ -70,11 +72,11 @@
    A line (an open sse or ws connection) is
    {:bridge/channel … :bridge/request … :bridge/wire …}: it carries
    the wire its routes were made with, which messages sent on it are
-   written by."
+   written by. Its channel tells it apart (a key for the app's own map of
+   lines): bridge's own for sse, Jetty's websocket session for ws."
   (:require
    [logbook.api :as logbook]
    [bridge.answers :as answers]
-   [bridge.channel :as channel]
    [bridge.http :as http]
    [bridge.limits :as limits]
    [bridge.messages :as messages]
@@ -89,7 +91,8 @@
 (def settings-shape
   "The settings, every key required, as a malli shape, the map closed:
    {:ip :port :proxy-protocol :client-address-header :server-header
-    :max-body-bytes :max-header-line-bytes :max-ws-message-bytes
+    :max-body-bytes :max-request-head-bytes :max-ws-message-bytes
+    :idle-timeout-ms :threads {:min :max :idle-timeout-ms}
     :addresses {:http :sse :ws} :ping-every-ms :sse-reconnect-after-ms
     :ws-reopen-after-ms :stop-wait-ms :stop-wait-after-cut-ms
     :rate-limit-buckets-before-cleanup :metric-buckets {:answer-seconds}}.
@@ -98,8 +101,14 @@
    the header it puts the asker's address in (\"cf-connecting-ip\",
    \"x-forwarded-for\"); nil when the server faces browsers itself.
    :server-header: the Server header, nil for none. :max-body-bytes,
-   :max-header-line-bytes, :max-ws-message-bytes: the largest request body,
-   request or header line, and ws message taken. :ping-every-ms: how often
+   :max-request-head-bytes, :max-ws-message-bytes: the largest request body
+   (413), request line and headers together (431, a longer address 414),
+   and ws message taken. :idle-timeout-ms: how long a connection, an open
+   line included, may pass nothing before it is closed; longer than
+   :ping-every-ms. :threads: Jetty's own platform threads (accepting,
+   reading sockets), :min and :max of them, one idle :idle-timeout-ms
+   ended; every request's work runs on a virtual thread of its own.
+   :ping-every-ms: how often
    an idle sse line gets a comment and a ws line {:bridge/ping {}}, so
    proxies don't cut them. :sse-reconnect-after-ms: how long the browser
    waits before it reopens a broken sse line, sent on the line (retry:);
@@ -175,28 +184,30 @@
      [(:ws addresses)   {:get  {:handler (ws/make-ring-handler-for-ws handlers limiter ping-every-ms options)}}]]))
 
 (defn start-server!
-  "Starts http-kit serving one Ring handler, every request on its own
-   virtual thread, at the settings' :ip and :port (0 picks a free one).
-   Options, every key required: {:log log}, the app's log, which
-   http-kit's own errors and warnings are written to. The settings and
-   options are checked first. Returns the running server:
-   {:port the-port …}."
+  "Starts Jetty 12 (through rj9a, without the servlet layer) serving one
+   Ring handler, every request on its own virtual thread, at the settings'
+   :ip and :port (0 picks a free one). Options, every key required:
+   {:log log}, the app's log, which a failure no step caught is written
+   to. The settings and options are checked first. Returns the running
+   server: {:port the-port …}."
   [ring-handler settings options]
   (server/start-server! ring-handler (settings/check-settings settings) (settings/check-server-options options)))
 
 (defn stop-server!
-  "Stops taking requests, lets running ones finish (up to the settings'
-   :stop-wait-ms), cuts the ones left and waits for their threads (up to
+  "Closes the open sse lines (each browser reopens its own), stops taking
+   requests, lets running ones finish (up to the settings' :stop-wait-ms),
+   cuts the ones left and waits for their threads (up to
    :stop-wait-after-cut-ms), then returns whether every request's thread
-   had ended."
+   had ended; nil when the server was already stopping."
   [server]
   (server/stop-server! server))
 
 (defn send-message-on-sse-line!
   "Writes a named message into an open sse line with its id, nil written
    out for none; an id comes back as Last-Event-ID when the browser
-   reconnects. Written by the wire the line carries. Whether the line was
-   open."
+   reconnects. Written by the wire the line carries, by the line's own
+   thread: it returns at once, whether the line was open. A line the
+   browser left is closed when its socket ends, by this write at the latest."
   [line message id]
   (sse/send-message-on-sse-line! line message id))
 
@@ -207,10 +218,24 @@
   (ws/send-message-on-ws-line! line message))
 
 (defn is-line-open?
-  "Whether an sse or ws line is still open: not closed, and its socket
-   not closed by the browser leaving."
+  "Whether an sse or ws line is still open: not closed by the server, and
+   not seen closed by the browser (a line the browser left is seen at its
+   next write, a ping at the latest)."
   [line]
-  (channel/is-channel-open? (:bridge/channel line)))
+  (let [channel (:bridge/channel line)]
+    (if (instance? bridge.sse.SseChannel channel)
+      (sse/is-sse-channel-open? channel)
+      (ws/is-ws-channel-open? channel))))
+
+(defn close-line!
+  "Closes an sse or ws line from the server; its close hook runs once (an
+   sse line's at once, a ws line's once the browser has its close)."
+  [line]
+  (let [channel (:bridge/channel line)]
+    (if (instance? bridge.sse.SseChannel channel)
+      (sse/close-sse-channel! channel)
+      (ws/close-ws-channel! channel))
+    nil))
 
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a

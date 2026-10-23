@@ -1,3 +1,5 @@
+> **Changed in part** by [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md) (2026-10-23, v0.7.5): `:max-header-line-bytes` is `:max-request-head-bytes` (the request line and headers together, 431); `:idle-timeout-ms` and `:threads` are new, required; the http-kit options and loggers named here are gone.
+
 > **Changed in part** by [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md) (2026-10-23, v0.7.0): the settings gain `:metric-buckets {:answer-seconds […]}`, required.
 
 > **Changed in part** by [A page has its query, #fragment and language; a move says how to scroll](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md) (2026-10-23, v0.6.0): `start-following-address!` takes options, every key required; `go-to-page!` and `make-address-of-page` take a query, `{}` for none; reitit-frontend's history options are gone with `easy`.
