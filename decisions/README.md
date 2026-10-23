@@ -26,7 +26,7 @@ All but the last nine were made while mailroom was three libraries inside Ground
 - [An sse line reopens after an HTTP error too, after the reconnect setting the browser is handed](2026-10-22-sse-reopens-after-an-http-error.md)
 - [The app passes its wire; mailroom never makes one](2026-10-22-the-app-passes-its-wire.md)
 - [The app passes its log; each message gets one that knows its request](2026-10-22-the-app-passes-its-log.md), changed in part by [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md) and [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md)
-- [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md)
+- [An error answer is told from data by one function, the same on both sides](2026-10-23-an-error-answer-is-told-by-one-function.md), added to by [The browser passes the server's error answers past the answer shape](2026-10-23-the-browser-passes-the-servers-error-answers-past-the-shape.md)
 - [A message sent over http may carry more headers, written out](2026-10-23-a-message-may-carry-more-headers.md)
 - [A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
 - [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
@@ -35,6 +35,7 @@ All but the last nine were made while mailroom was three libraries inside Ground
 - [mailroom is renamed bridge](2026-10-23-mailroom-is-renamed-bridge.md)
 - [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md)
 - [A message may come with no request](2026-10-23-a-message-may-come-with-no-request.md) (built on tidy-up, not released)
+- [The browser passes the server's error answers past the answer shape](2026-10-23-the-browser-passes-the-servers-error-answers-past-the-shape.md) (built on tidy-up, not released)
 
 ## Replaced
 

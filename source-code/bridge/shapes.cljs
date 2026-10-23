@@ -7,6 +7,7 @@
    throws, nothing is sent; coming in it arrives with :bridge/errors.
    wire is the app's, which every shape is used by."
   (:require
+   [bridge.answers :as answers]
    [wire.api :as wire]))
 
 (defn- turn-each-name [message turn]
@@ -32,9 +33,12 @@
                               data))))
 
 (defn turn-answer-into-shaped-data
-  "Each name's answer as shaped data, by its :answer-shape. An answer that
-   doesn't fit, or whose name has no shapes, stays as it came, with
-   :bridge/errors added. :bridge/notes, bridge's own, passes as it is."
+  "Each name's answer as shaped data, by its :answer-shape. An error
+   answer the server made instead of data (a refusal, {:error \"Not
+   found.\"}, or params that didn't fit, {:errors …}) passes as it is: the
+   server sends it past the :answer-shape. An answer that doesn't fit, or
+   whose name has no shapes, stays as it came, with :bridge/errors added.
+   :bridge/notes, bridge's own, passes as it is."
   [wire shapes answer]
   (turn-each-name answer (fn [message-name data]
                            (cond
@@ -43,6 +47,9 @@
 
                              (not (contains? shapes message-name))
                              {:bridge/errors [(str "No shapes named " message-name)] :data data}
+
+                             (answers/is-error-answer? data)
+                             data
 
                              :else
                              (if-let [shape (get-in shapes [message-name :answer-shape])]

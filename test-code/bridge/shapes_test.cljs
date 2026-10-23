@@ -41,6 +41,11 @@
   (testing "an answer that doesn't fit stays as it came, with its errors"
     (let [answer (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:shop/id "seven" :total "1"}})]
       (is (contains? (:shops/total answer) :bridge/errors))))
+  (testing "an error answer the server made instead of data passes as it is"
+    (is (= {:shops/total {:error "Not found."}}
+           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:error "Not found."}})))
+    (is (= {:shops/total {:errors {:shop/id ["should be a uuid"]}}}
+           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:errors {:shop/id ["should be a uuid"]}}}))))
   (testing "a name the shapes don't have: as it came, with its errors; notes pass"
     (let [answer (shapes/turn-answer-into-shaped-data wire shapes-by-name {:nobody/home {:a 1} :bridge/notes {:x 1}})]
       (is (= {:a 1} (get-in answer [:nobody/home :data])))
