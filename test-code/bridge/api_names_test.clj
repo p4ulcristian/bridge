@@ -16,7 +16,7 @@
            send-message-on-ws-line!
            is-line-open?
            close-line!
-           answer-message
+           answer-message make-message-limiter
            is-error-answer?
            make-server-routes-for-pages
            make-ring-handler-from-routes

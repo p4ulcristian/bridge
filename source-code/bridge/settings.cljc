@@ -197,9 +197,21 @@
   [:map-of :keyword handler-shape])
 
 (def rate-limits-outside-a-server-shape
-  "answer-message's rate limits: the server's limiter counts them, and
-   outside a server there is none, so the caller writes :no-rate-limits."
-  [:= :no-rate-limits])
+  "answer-message's rate limits: :no-rate-limits, written out, for a test
+   or the REPL; or a limiter of the caller's (make-message-limiter), which
+   counts each handler's :rate-limit as the server's does."
+  [:or
+   [:= :no-rate-limits]
+   [:map {:closed true} [:find-key fn?] [:buckets-before-cleanup [:int {:min 1}]] [:buckets some?]]])
+
+(def message-limiter-options-shape
+  "make-message-limiter's options, every key required.
+   :find-rate-limit-key: (fn [request]) telling askers apart.
+   :buckets-before-cleanup: above this many askers' buckets in memory, the
+   full ones are dropped."
+  [:map {:closed true}
+   [:find-rate-limit-key fn?]
+   [:buckets-before-cleanup [:int {:min 1}]]])
 
 (def answer-options-shape
   "answer-message's options, every key required. :wire: the app's wire,
@@ -328,6 +340,9 @@
 
 (defn check-rate-limits-outside-a-server [rate-limits]
   (check-data-for-shape "The rate limits" :bridge/bad-options rate-limits-outside-a-server-shape rate-limits))
+
+(defn check-message-limiter-options [options]
+  (check-data-for-shape "The options" :bridge/bad-options message-limiter-options-shape options))
 
 (defn check-server-options [options]
   (check-data-for-shape "The options" :bridge/bad-options server-options-shape options))

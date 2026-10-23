@@ -2,7 +2,9 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [bridge.api :as bridge]
-   [bridge.limits :as limits]))
+   [bridge.limits :as limits]
+   [bridge.test-log]
+   [bridge.test-wire]))
 
 (deftest a-bucket-per-message-and-asker
   (let [limiter (limits/make-limiter :remote-addr 10000)
@@ -51,3 +53,13 @@
                                                                                          :find-rate-limit-key (fn [request] (:remote-addr request))})
                                       (catch Exception e e)))
                         [:type :errors])))))
+
+(deftest a-message-answered-off-the-server-is-limited-by-the-callers-limiter
+  (let [handlers {:t/once {:steps [{:name :answer :enter #(bridge/add-answer-to-context % {:ok true})}]
+                           :params-shape nil :answer-shape nil :rate-limit {:max 1 :per-ms 60000} :run-steps-in nil}}
+        limiter  (bridge/make-message-limiter {:find-rate-limit-key #(:token %) :buckets-before-cleanup 100})
+        ask      #(bridge/answer-message handlers limiter {:token %} {:t/once {}} {:wire bridge.test-wire/wire :log bridge.test-log/log})]
+    (is (= {:t/once {:ok true}} (ask "a")))
+    (is (= {:t/once {:error "Too many requests."}} (ask "a")) "the handler's :rate-limit, per asker")
+    (is (= {:t/once {:ok true}} (ask "b")) "another asker has its own")
+    (is (= :bridge/bad-options (:type (ex-data (try (bridge/make-message-limiter {}) (catch Exception e e))))))))

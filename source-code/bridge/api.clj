@@ -237,11 +237,22 @@
       (ws/close-ws-channel! channel))
     nil))
 
+(defn make-message-limiter
+  "A limiter for answer-message, counting each handler's :rate-limit per
+   asker, as the server's does: for messages answered off the server's
+   addresses (a token's call on the app's own route). Options, every key
+   required, checked first: :find-rate-limit-key (fn [request]) telling
+   askers apart; :buckets-before-cleanup."
+  [options]
+  (let [{:keys [find-rate-limit-key buckets-before-cleanup]} (settings/check-message-limiter-options options)]
+    (limits/make-limiter find-rate-limit-key buckets-before-cleanup)))
+
 (defn answer-message
   "The answer a message gets from the handlers, as over http, without a
-   server: for tests and the REPL. rate-limits is :no-rate-limits, written
-   out: the server's limiter counts a handler's :rate-limit, and here there
-   is none. request is the Ring request it came with (its cookie, its
+   server: for tests, the REPL, and messages answered off the server's
+   addresses. rate-limits is :no-rate-limits, written out (nothing is
+   counted), or a limiter from make-message-limiter (each handler's
+   :rate-limit counted per asker). request is the Ring request it came with (its cookie, its
    origin). Notes, when a handler has them, are beside the answers under
    :bridge/notes. Options, every key required: :wire, the app's wire;
    :log, the app's log, which the message's log is made from. The handlers
