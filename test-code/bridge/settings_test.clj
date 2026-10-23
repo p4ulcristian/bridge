@@ -95,11 +95,11 @@
   (let [step                  {:name :answer :enter #(bridge/add-answer-to-context % "hi")}
         {:keys [type errors]} (find-problems #(bridge/make-routes-for-messages {:greetings/hello {:steps [step]}} settings (with-new-meter options)))]
     (is (= :bridge/bad-handlers type))
-    (is (= #{:params-shape :answer-shape :rate-limit :run-steps-in} (set (keys (:greetings/hello errors))))
+    (is (= #{:params-shape :answer-shape :refusals :rate-limit :run-steps-in} (set (keys (:greetings/hello errors))))
         "each missing one, named"))
   (testing "nil written out: no shapes, no limit, run plainly; a key of the app's own rides along"
     (is (= 3 (count (bridge/make-routes-for-messages
-                     {:greetings/hello {:steps [] :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil
+                     {:greetings/hello {:steps [] :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil
                                         :access/rule :anyone}}
                      settings (with-new-meter options))))))
   (testing "answer-message checks them too"

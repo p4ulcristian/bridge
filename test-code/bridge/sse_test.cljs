@@ -37,7 +37,7 @@
   (set! (.-readyState source) 2)
   ((.-onerror source) #js {}))
 
-(def ^:private shapes-by-name {:sync/changed {:params-shape nil :answer-shape nil}})
+(def ^:private shapes-by-name {:sync/changed {:params-shape nil :answer-shape nil :refusals {:sync/stopped nil}}})
 
 (defn- after-ms [ms f] (js/setTimeout f ms))
 
@@ -92,3 +92,15 @@
                       (catch :default e (ex-data e)))]
     (is (= :bridge/bad-options (:type problems)) "no :reconnect-after-ms: refused before the line opens")
     (is (contains? (:errors problems) :reconnect-after-ms))))
+
+(deftest a-refusal-on-the-line-is-shaped-as-over-http
+  (install-stand-in-event-source!)
+  (let [heard (atom [])
+        line  (bridge/open-sse-line! "/mail/sse" shapes-by-name {:sync/changed #(swap! heard conj %)}
+                                     {:wire wire :on-open nil :reconnect-after-ms 20})]
+    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"bridge/refused\":\"sync/stopped\",\"bridge/data\":null,\"bridge/request-id\":\"r\"}}"})
+    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"bridge/refused\":\"sync/unknown\",\"bridge/data\":null,\"bridge/request-id\":\"r\"}}"})
+    (is (= [{:bridge/refused :sync/stopped :bridge/data nil :bridge/request-id "r"} :bridge/unfit]
+           [(first @heard) (:bridge/refused (second @heard))])
+        "a declared reason as a keyword; one the name doesn't declare, :bridge/unfit")
+    (bridge/close-sse-line! line)))

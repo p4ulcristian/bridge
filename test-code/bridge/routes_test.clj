@@ -11,7 +11,7 @@
 
 (def ^:private handlers
   {:greetings/hello {:steps        [{:name :say-hello :enter #(bridge/add-answer-to-context % "hello")}]
-                     :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil}})
+                     :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil}})
 
 (def ^:private options
   {:wire                wire

@@ -7,12 +7,13 @@
 
    The addresses, the sse and ws reopen delays and the pages come from the server
    (the app puts them in the page); the browser uses the same shapes as
-   the server's handlers, by name, both written out (nil: as it is), from
-   a .cljc file of the app's:
+   the server's handlers, by name, each written out (nil: as it is; {}:
+   no reasons), from a .cljc file of the app's:
 
      (def shapes-by-name {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
-                                           :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
-                          :sync/changed   {:params-shape nil :answer-shape nil}})
+                                           :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]
+                                           :refusals     {:shop/closed [:map [:shop/opens-at :time/instant]]}}
+                          :sync/changed   {:params-shape nil :answer-shape nil :refusals {}}})
 
      ;; the app's wire, made once by the app from the browser's settings (bridge never makes one)
      (def wire (wire.api/make-wire-from-settings {:most-shapes-kept 1000 :most-keys-kept 10000
@@ -38,9 +39,13 @@
 
 (defn send-message!
   "http: POSTs a named message, its data by :params-shape. A promise of the
-   answer keyed by the same names, each shaped by its :answer-shape, and
-   :bridge/notes beside them when the server sent notes. A name the
-   shapes don't have throws (:bridge/no-shapes); nothing is sent.
+   answer keyed by the same names, each shaped by its :answer-shape or a
+   refusal, its data by its reason's shape, and :bridge/notes beside them
+   when the server sent notes. It never fails for want of an answer: no
+   response (the network), or one that isn't the server's JSON (a proxy's
+   502, a 413), is {:bridge/refused :bridge/no-answer :bridge/data
+   {:http-status n}} under each name, n nil when no response came. A name
+   the shapes don't have throws (:bridge/no-shapes); nothing is sent.
    Options, every key required: :wire, the app's wire; :headers, more
    request headers by lowercase name, {} for none (accept and
    content-type are bridge's own). A missing or bad option refuses,
@@ -49,14 +54,20 @@
   (http/send-message! address shapes-by-name message options))
 
 (defn is-error-answer?
-  "Whether an answer is one of bridge's error answers rather than data,
-   the same on both sides: {:error …} alone (a refusal: the server's
-   \"Not found.\", \"Too many requests.\", \"Something went wrong.\"),
-   {:errors …} alone (params that didn't fit their shape), or one carrying
-   :bridge/errors (an answer that didn't fit its shape, or a name the
-   shapes don't have, with the data as it came). Anything else is data."
+  "Whether an answer is a refusal rather than data, the same on both
+   sides: a map carrying :bridge/refused, the reason, with :bridge/data
+   and the server's :bridge/request-id (none on :bridge/no-answer, which
+   no server sent). Anything else is data."
   [answer]
   (answers/is-error-answer? answer))
+
+(def refusals
+  "bridge's own reasons, each with the shape of its data (nil: none), the
+   same as on the server: :bridge/too-many, :bridge/invalid,
+   :bridge/failed, the server's; :bridge/no-answer {:http-status n} and
+   :bridge/unfit {:errors …}, the browser's own. Every name may be refused
+   with them; its :refusals add its handler's."
+  answers/refusals)
 
 (defn open-sse-line!
   "sse: opens the stream; each named message, shaped by its :answer-shape,

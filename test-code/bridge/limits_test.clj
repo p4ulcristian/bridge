@@ -8,21 +8,27 @@
 
 (deftest a-bucket-per-message-and-asker
   (let [limiter (limits/make-limiter :remote-addr 10000)
-        ask     #(limits/is-message-allowed? limiter {:remote-addr %1} %2 {:max 2 :per-ms 60000})]
+        ask     #(nil? (limits/find-wait-ms limiter {:remote-addr %1} %2 {:max 2 :per-ms 60000}))]
     (is (= [true true false] [(ask "1.1.1.1" :orders/place) (ask "1.1.1.1" :orders/place) (ask "1.1.1.1" :orders/place)]))
     (is (true? (ask "2.2.2.2" :orders/place)) "another asker has its own")
     (is (true? (ask "1.1.1.1" :orders/cancel)) "another message has its own")))
 
+(deftest the-wait-is-until-the-next-token
+  (let [limiter (limits/make-limiter :remote-addr 10000)
+        ask     #(limits/find-wait-ms limiter {:remote-addr "1.1.1.1"} :x {:max 2 :per-ms 10000})]
+    (is (= [nil nil] [(ask) (ask)]) "allowed: no wait")
+    (is (<= 4900 (ask) 5000) "one token comes back every per-ms / max")))
+
 (deftest it-refills
   (let [limiter (limits/make-limiter :remote-addr 10000)
-        ask     #(limits/is-message-allowed? limiter {:remote-addr "1.1.1.1"} :x {:max 1 :per-ms 100})]
+        ask     #(nil? (limits/find-wait-ms limiter {:remote-addr "1.1.1.1"} :x {:max 1 :per-ms 100}))]
     (is (= [true false] [(ask) (ask)]))
     (Thread/sleep 150)
     (is (true? (ask)))))
 
 (deftest full-buckets-are-dropped-above-the-setting
   (let [limiter (limits/make-limiter :remote-addr 2)
-        ask     #(limits/is-message-allowed? limiter {:remote-addr %} :x {:max 1 :per-ms 50})]
+        ask     #(limits/find-wait-ms limiter {:remote-addr %} :x {:max 1 :per-ms 50})]
     (run! ask ["1.1.1.1" "2.2.2.2" "3.3.3.3"])
     (is (= 3 (.size (:buckets limiter))) "at most the setting, nothing is dropped")
     (Thread/sleep 100)
@@ -56,10 +62,12 @@
 
 (deftest a-message-answered-off-the-server-is-limited-by-the-callers-limiter
   (let [handlers {:t/once {:steps [{:name :answer :enter #(bridge/add-answer-to-context % {:ok true})}]
-                           :params-shape nil :answer-shape nil :rate-limit {:max 1 :per-ms 60000} :run-steps-in nil}}
+                           :params-shape nil :answer-shape nil :refusals {} :rate-limit {:max 1 :per-ms 60000} :run-steps-in nil}}
         limiter  (bridge/make-message-limiter {:find-rate-limit-key #(:token %) :buckets-before-cleanup 100})
         ask      #(bridge/answer-message handlers limiter {:token %} {:t/once {}} {:wire bridge.test-wire/wire :log bridge.test-log/log})]
     (is (= {:t/once {:ok true}} (ask "a")))
-    (is (= {:t/once {:error "Too many requests."}} (ask "a")) "the handler's :rate-limit, per asker")
+    (let [{:t/keys [once]} (ask "a")]
+      (is (= [:bridge/too-many true] [(:bridge/refused once) (< 59000 (get-in once [:bridge/data :retry-after-ms]) 60001)])
+          "the handler's :rate-limit, per asker; refused with how long until the next one is let through"))
     (is (= {:t/once {:ok true}} (ask "b")) "another asker has its own")
     (is (= :bridge/bad-options (:type (ex-data (try (bridge/make-message-limiter {}) (catch Exception e e))))))))

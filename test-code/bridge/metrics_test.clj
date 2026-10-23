@@ -25,7 +25,7 @@
    :metric-buckets {:answer-seconds [0.05 1]}})
 
 (defn- make-handler [steps]
-  {:steps steps :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil})
+  {:steps steps :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil})
 
 (defn- answer-with [answer]
   [{:name :answer :enter #(bridge/add-answer-to-context % answer)}])
@@ -33,7 +33,7 @@
 (def ^:private handlers
   {:t/ok       (make-handler (answer-with {:hello "Anna"}))
    :t/invalid  (assoc (make-handler (answer-with {})) :params-shape [:map [:shop/id :uuid]])
-   :t/refused  (make-handler (answer-with {:error "Not found."}))
+   :t/refused  (assoc (make-handler [{:name :refuse :enter #(bridge/refuse % :t/closed nil)}]) :refusals {:t/closed nil})
    :t/too-many (assoc (make-handler (answer-with {})) :rate-limit {:max 1 :per-ms 60000})
    :t/failed   (make-handler [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}])
    :t/unfit    (assoc (make-handler (answer-with {:extra 1})) :answer-shape [:map [:total :int]])})

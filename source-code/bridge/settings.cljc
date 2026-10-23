@@ -16,6 +16,7 @@
    answer messages or run the server take the app's log under :log;
    bridge never decides how a line is written."
   (:require
+   [bridge.answers :as answers]
    #?(:clj [bridge.limits :as limits])
    [malli.core :as malli]
    [malli.error :as malli-error]))
@@ -181,17 +182,28 @@
                     [:hashed-file-cache-seconds [:int {:min 0}]]]]]
    [:not-found [:maybe fn?]]])
 
+(def answer-shape-entry
+  "A handler's or a name's :answer-shape: any malli shape, or nil, that
+   doesn't name :bridge/refused (data that could read as a refusal)."
+  [:answer-shape [:fn {:error/message "may not name :bridge/refused: a refusal is made by refuse, and declared in :refusals"}
+                  (complement answers/does-shape-name-refused?)]])
+
 (def handler-shape
   "One handler, every key bridge reads required, nil written out where
    nothing applies. :steps, its work. :params-shape and :answer-shape, the
    malli shapes its data comes in by and its answer leaves by; nil passes
-   it as it is. :rate-limit, {:max 10 :per-ms 60000} per asker, nil for
-   none. :run-steps-in, (fn [run context]) the steps run inside (a
-   transaction), nil to run them plainly."
+   it as it is; an :answer-shape may not name :bridge/refused.
+   :refusals, the reasons its steps may refuse with (refuse), each with
+   the shape of its data, nil for none, {} for no reasons; bridge's own
+   (bridge.answers/refusals) are never declared. :rate-limit, {:max 10
+   :per-ms 60000} per asker, nil for none. :run-steps-in, (fn [run
+   context]) the steps run inside (a transaction), nil to run them
+   plainly."
   [:map
    [:steps [:sequential [:map [:name :keyword] [:enter fn?]]]]
    [:params-shape :any]
-   [:answer-shape :any]
+   answer-shape-entry
+   [:refusals answers/refusals-shape]
    [:rate-limit [:maybe [:map {:closed true}
                          [:max [:int {:min 1}]]
                          [:per-ms [:int {:min 1}]]]]]
@@ -246,11 +258,14 @@
 ;; The browser's options and data
 
 (def shapes-by-name-shape
-  "The browser's shapes, by message name: the same two a handler says,
-   each written out, nil where the data passes as it is."
+  "The browser's shapes, by message name: the same three a handler says,
+   each written out: :params-shape and :answer-shape, nil where the data
+   passes as it is; :refusals, its reasons with their data's shapes, {}
+   for none."
   [:map-of :keyword [:map
                      [:params-shape :any]
-                     [:answer-shape :any]]])
+                     answer-shape-entry
+                     [:refusals answers/refusals-shape]]])
 
 (def ^:private headers-bridge-sets
   "The request headers send-message! writes itself: what the body is and

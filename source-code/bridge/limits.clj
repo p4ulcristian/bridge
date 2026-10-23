@@ -31,11 +31,14 @@
   [x]
   (instance? Limiter x))
 
-(defn- take-token [{:keys [tokens at]} now {:keys [max per-ms]}]
-  (let [refilled (min max (+ tokens (* (- now at) (/ max per-ms))))]
+(defn- take-token
+  "The bucket after one message: a token taken when there is one, else
+   :wait-ms, how long until there is (at least 1)."
+  [{:keys [tokens at]} now {most :max :keys [per-ms]}]
+  (let [refilled (min most (+ tokens (* (- now at) (/ most per-ms))))]
     (if (>= refilled 1)
-      {:tokens (dec refilled) :at now :allowed? true}
-      {:tokens refilled :at now :allowed? false})))
+      {:tokens (dec refilled) :at now :wait-ms nil}
+      {:tokens refilled :at now :wait-ms (max 1 (long (Math/ceil (double (/ (* (- 1 refilled) per-ms) most)))))})))
 
 (defn- forget-full-buckets!
   "Buckets that have refilled hold nothing worth keeping."
@@ -45,16 +48,17 @@
             :when (> (- now (:at bucket)) (:per-ms bucket))]
       (.remove buckets k))))
 
-(defn is-message-allowed?
-  "Whether this asker may send this message now; takes one from its bucket."
+(defn find-wait-ms
+  "nil when this asker may send this message now, and one is taken from
+   its bucket; else how long, in ms, until it may."
   [{:keys [find-key buckets-before-cleanup ^ConcurrentHashMap buckets]} request message-name {:keys [max] :as rate-limit}]
   (let [now (System/currentTimeMillis)
         k   [message-name (find-key request)]]
     (forget-full-buckets! buckets buckets-before-cleanup now)
-    (:allowed? (.compute buckets k (reify java.util.function.BiFunction
-                                     (apply [_ _ bucket]
-                                       (assoc (take-token (or bucket {:tokens max :at now}) now rate-limit)
-                                              :per-ms (:per-ms rate-limit))))))))
+    (:wait-ms (.compute buckets k (reify java.util.function.BiFunction
+                                    (apply [_ _ bucket]
+                                      (assoc (take-token (or bucket {:tokens max :at now}) now rate-limit)
+                                             :per-ms (:per-ms rate-limit))))))))
 
 (def too-many-requests
   "A plain route's answer over its rate limit."
@@ -66,7 +70,7 @@
   [ring-handler {:keys [rate-limit find-rate-limit-key buckets-before-cleanup]}]
   (let [limiter (make-limiter find-rate-limit-key buckets-before-cleanup)]
     (fn [request]
-      (if (is-message-allowed? limiter request :route rate-limit)
+      (if (nil? (find-wait-ms limiter request :route rate-limit))
         (ring-handler request)
         too-many-requests))))
 

@@ -21,14 +21,32 @@
        :headers     (clj->js (merge headers {"accept" "application/json" "content-type" "application/json"}))
        :body        (wire/turn-data-into-json-text wire message)})
 
+(defn- read-answer
+  "The answer in a response: shaped, when the server answered 200 with a
+   JSON object; else :bridge/no-answer under each name, with the status (a
+   proxy's 502, a 413, a page that isn't JSON)."
+  [wire shapes-by-name message status text]
+  (let [data (when (= 200 status)
+               (try (wire/turn-json-text-into-data wire text)
+                    (catch :default _ nil)))]
+    (if (map? data)
+      (shapes/turn-answer-into-shaped-data wire shapes-by-name data)
+      (shapes/make-no-answer message status))))
+
 (defn send-message!
   "POSTs {:orders/of-shop {…}} to the address. A promise of the answer,
-   {:orders/of-shop …}: shaped data by the shapes, or {:error …}, through
-   the options' :wire. The shapes and the options are checked first, and a
+   {:orders/of-shop …}: shaped data by the shapes, or a refusal, through
+   the options' :wire; it never fails for want of an answer: no response
+   (the network) or one that isn't the server's JSON is :bridge/no-answer
+   under each name. The shapes and the options are checked first, and a
    name without shapes isn't sent."
   [address shapes-by-name message options]
   (settings/check-shapes-by-name shapes-by-name)
-  (let [{:keys [wire headers]} (settings/check-send-options options)]
-    (-> (js/fetch address (make-fetch-options wire headers (shapes/turn-message-into-json-data wire shapes-by-name message)))
-        (.then #(.text %))
-        (.then #(shapes/turn-answer-into-shaped-data wire shapes-by-name (wire/turn-json-text-into-data wire %))))))
+  (let [{:keys [wire headers]} (settings/check-send-options options)
+        json-data              (shapes/turn-message-into-json-data wire shapes-by-name message)]
+    (-> (js/fetch address (make-fetch-options wire headers json-data))
+        (.then (fn [response]
+                 (-> (.text response)
+                     (.then #(read-answer wire shapes-by-name message (.-status response) %)
+                            (fn [_] (shapes/make-no-answer message (.-status response))))))
+               (fn [_] (shapes/make-no-answer message nil))))))

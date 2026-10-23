@@ -17,10 +17,10 @@
            is-line-open?
            close-line!
            answer-message make-message-limiter
-           is-error-answer?
+           is-error-answer? refusals
            make-server-routes-for-pages
            make-ring-handler-from-routes
            run-steps-until-answered
-           add-answer-to-context
+           add-answer-to-context refuse
            does-context-have-answer?}
          (set (keys (ns-publics 'bridge.api))))))

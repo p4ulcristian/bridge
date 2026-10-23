@@ -42,6 +42,32 @@ there, `:bridge/handler-failed`; a failure no step caught goes to
 ([why](decisions/2026-10-22-the-app-passes-its-log.md)). Jetty's own lines go
 to SLF4J, to whatever the app puts behind it.
 
+A step answers with data, or refuses with a named reason its handler
+declares, with data by the reason's shape
+([why](decisions/2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md)):
+
+```clojure
+{:orders/ship {… :refusals {:order/already-shipped [:map [:order/shipped-at :time/instant]]
+                            :order/no-address      nil}}}            ; nil: no data; {} for no reasons
+
+(bridge/refuse context :order/already-shipped {:order/shipped-at shipped-at})
+;; on the wire, over http, sse and ws alike, with the message's request id:
+{:orders/ship {:bridge/refused :order/already-shipped :bridge/data {:order/shipped-at "…"}
+               :bridge/request-id "5f0c…"}}
+```
+
+The reason is the key of its text in the app's catalogs and its data the
+text's arguments; no English travels. bridge's own reasons are
+`bridge/refusals`: `:bridge/too-many {:retry-after-ms n}` (over the
+`:rate-limit`), `:bridge/invalid {:errors …}` (params that don't fit),
+`:bridge/failed` (a bug: a step threw, no step answered, an answer or a
+refusal's data didn't fit its shape, a reason the handler doesn't
+declare, a name no handler has), and in the browser `:bridge/no-answer
+{:http-status n}` and `:bridge/unfit {:errors …}`. Every refusal is
+written to the message's log, `:info :bridge/refused`; every bug with its
+details, `:error` (a name no handler has, `:warn`); either is found by the
+refusal's request id. A POST carrying several names stays 200.
+
 And with the meter: `make-routes-for-messages` takes the app's meter under
 `:meter` and declares bridge's metrics on it
 ([why](decisions/2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md)):
@@ -66,14 +92,16 @@ The names are the handler table's: one no handler has is counted as
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `make-rate-limited-ring-handler` | a plain route (not a message) behind its own limiter, the same buckets, `429` over it ([why](decisions/2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)) |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:bridge/answer`) |
-| both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:bridge/errors` |
-| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside bridge's own (`{}` for none) |
+| server | `refuse` | a step refuses: a reason its handler's `:refusals` declare, with data by its shape |
+| both | `is-error-answer?` | a refusal rather than data: a map carrying `:bridge/refused` |
+| both | `refusals` | bridge's own reasons with their data's shapes; every name may be refused with them |
+| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside bridge's own (`{}` for none); it never fails for want of an answer: no response, or one that isn't the server's JSON, is `:bridge/no-answer {:http-status n}` under each name |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `:may-leave?` is asked before leaving a page |
 
 Nothing has a default: every value that sets behaviour is written out,
 the settings, every option, every key of a handler, a page and a name's
-shapes (nil where nothing applies); a missing one refuses, named, with
+shapes (nil where nothing applies, `{}` for no reasons); a missing one refuses, named, with
 every other problem at once. No function fills in an argument. What stays
 fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behaviour-is-a-setting.md).
 
@@ -130,6 +158,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 (def handlers
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]          ; nil: the data passes as it is
                     :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]
+                    :refusals     {:shop/closed nil}               ; reasons a step may refuse with; {} for none
                     :rate-limit   {:max 10 :per-ms 60000}          ; nil for none
                     :run-steps-in nil                              ; (fn [run context]), e.g. a transaction
                     :steps        [find-orders-of-shop add-orders-answer]}})
@@ -167,11 +196,15 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                                  :exact-decimals   wire.big/big}))   ; or nil: a decimal stays its text
 (def shapes-by-name
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]
-                    :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
-   :chat/said      {:params-shape nil :answer-shape nil}})
+                    :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]
+                    :refusals     {:shop/closed nil}}
+   :chat/said      {:params-shape nil :answer-shape nil :refusals {}}})
 
 (-> (bridge/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire :headers {}})
-    (.then (fn [{:orders/keys [of-shop]}] …)))
+    (.then (fn [{:orders/keys [of-shop]}]
+             (if (bridge/is-error-answer? of-shop)
+               (show-refusal! (:bridge/refused of-shop) (:bridge/data of-shop))   ; the reason is the text's key
+               (show-orders! of-shop)))))
 
 (bridge/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
                        {:wire               wire

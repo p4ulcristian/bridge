@@ -15,6 +15,7 @@
      (def handlers {:orders/of-shop {:steps        [find-orders-of-shop add-orders-answer]
                                      :params-shape [:map [:shop/id :uuid]]
                                      :answer-shape [:vector [:map [:order/id :uuid]]]
+                                     :refusals     {:shop/closed [:map [:shop/opens-at :time/instant]]}
                                      :rate-limit   nil
                                      :run-steps-in nil}})
 
@@ -54,12 +55,28 @@
    what every step may use: :bridge/log, the app's log with a new random
    request id as its context ({:request-id \"…\"}), and :bridge/wire,
    the app's wire. A step that learns more (who is asking) puts a log with
-   more context back at :bridge/log, for the steps after it. A handler's
-   failure is written to that log, :error :bridge/handler-failed; a
-   failure no step caught (outside every handler's steps, or a ws message
-   that isn't JSON) to start-server!'s :log, :bridge/server-error. bridge
-   writes nowhere else; Jetty's own lines go to SLF4J, to whatever the app
-   puts behind it.
+   more context back at :bridge/log, for the steps after it.
+
+   A step answers with data (add-answer-to-context) or refuses with a
+   named reason its handler declares (refuse); every refusal leaves with
+   the message's request id:
+
+     {:orders/ship {:bridge/refused :order/already-shipped :bridge/data {:order/shipped-at \"…\"}
+                    :bridge/request-id \"5f0c…\"}}
+
+   bridge's own reasons (refusals): :bridge/too-many, :bridge/invalid, and
+   :bridge/failed for every bug. A refusal is written to the message's
+   log, :info :bridge/refused; a bug with its details, :error: a step
+   that threw, :bridge/handler-failed; no step answered,
+   :bridge/no-step-answered; an answer that doesn't fit its shape,
+   :bridge/answer-unfit; a reason the handler doesn't declare,
+   :bridge/undeclared-refusal; a refusal's data that doesn't fit its
+   reason's shape, :bridge/refusal-unfit; and a name no handler has,
+   :warn :bridge/no-handler. One POST carries many names, so it stays 200
+   whatever each name was answered. A failure no step caught (outside
+   every handler's steps, or a ws message that isn't JSON) goes to
+   start-server!'s :log, :bridge/server-error. bridge writes nowhere else;
+   Jetty's own lines go to SLF4J, to whatever the app puts behind it.
 
    make-routes-for-messages declares bridge's metrics on the app's meter,
    its :meter, and counts into it (bridge.metrics):
@@ -150,10 +167,12 @@
 (defn make-routes-for-messages
   "The three routes, at the settings' :addresses, as reitit data, for
    make-ring-handler-from-routes. Each handler says, every key written out:
-   :steps; :params-shape and :answer-shape (nil: the data passes as it is);
-   :rate-limit, {:max 10 :per-ms 60000} per asker (over it, \"Too many
-   requests.\"), nil for none; :run-steps-in, (fn [run context]), nil for
-   none. Options, each required: :wire, the app's wire (wire.api's
+   :steps; :params-shape and :answer-shape (nil: the data passes as it is;
+   an :answer-shape may not name :bridge/refused); :refusals, the reasons
+   its steps may refuse with, each with its data's shape (nil: none), {}
+   for none, never bridge's own; :rate-limit, {:max 10 :per-ms 60000} per
+   asker (over it, :bridge/too-many), nil for none; :run-steps-in, (fn
+   [run context]), nil for none. Options, each required: :wire, the app's wire (wire.api's
    make-wire-from-settings), which every message is read and written by;
    :log, the app's log (logbook's), which each message's log is made from,
    with a new request id; :meter, the app's meter (meter's make-meter),
@@ -276,13 +295,23 @@
 ;; -----------------------------------------------------------------------------
 ;; Answers
 
+(def refusals
+  "bridge's own reasons, each with the shape of its data (nil: none), the
+   same on both sides; a handler never declares them, and each needs its
+   text in the app's catalogs, as a handler's do. The server's:
+   :bridge/too-many {:retry-after-ms n}, over the handler's :rate-limit;
+   :bridge/invalid {:errors …}, params that didn't fit; :bridge/failed,
+   nil, a bug, its details in the log under the refusal's
+   :bridge/request-id. The browser's: :bridge/no-answer {:http-status n},
+   no answer came; :bridge/unfit {:errors …}, the server's answer didn't
+   fit the browser's shapes."
+  answers/refusals)
+
 (defn is-error-answer?
-  "Whether an answer is one of bridge's error answers rather than data,
-   the same on both sides: {:error …} alone (a refusal: a step's, \"Not
-   found.\", or bridge's own, \"Too many requests.\", \"Something went
-   wrong.\"), {:errors …} alone (params that didn't fit their shape), or
-   one carrying :bridge/errors (in the browser, an answer that didn't fit
-   its shape). Anything else is data."
+  "Whether an answer is a refusal rather than data, the same on both
+   sides: a map carrying :bridge/refused, the reason, with :bridge/data
+   and the request id, :bridge/request-id (none on the browser's own
+   :bridge/no-answer). Anything else is data."
   [answer]
   (answers/is-error-answer? answer))
 
@@ -325,6 +354,18 @@
    runs."
   [context answer]
   (steps/add-answer-to-context context answer))
+
+(defn refuse
+  "The context with a refusal for its answer, a reason the handler's
+   :refusals declare with data that fits its shape (nil for a reason of nil
+   shape); no step after this one runs.
+
+     (bridge/refuse context :order/already-shipped {:order/shipped-at shipped-at})
+
+   A reason the handler doesn't declare, or data that doesn't fit, is a bug:
+   written to the log and answered :bridge/failed."
+  [context reason data]
+  (steps/add-answer-to-context context (answers/make-refusal reason data)))
 
 (defn does-context-have-answer?
   "Whether a step has added an answer."

@@ -2,6 +2,7 @@
   (:require
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
+   [jsonista.core :as json]
    [logbook.api :as logbook]
    [bridge.api :as bridge]
    [bridge.test-log :as test-log :refer [log]]
@@ -40,9 +41,9 @@
    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
 
 (defn- make-handler
-  "A handler with every key written out: no shapes, no limit, run plainly."
+  "A handler with every key written out: no shapes, no reasons, no limit, run plainly."
   [steps]
-  {:steps steps :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil})
+  {:steps steps :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil})
 
 (def ^:private handlers
   {:greetings/hello (make-handler [say-hello])
@@ -50,6 +51,14 @@
                            :params-shape [:map [:shop/id :uuid]]
                            :answer-shape [:map [:shop/id :uuid] [:total :decimal]])
    :greetings/fail  (make-handler [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}])})
+
+(defn- read-json [text] (json/read-value text))
+
+(defn- without-request-ids
+  "The JSON data with each name's request id taken out, and the ids: [data ids]."
+  [data]
+  [(update-vals data #(if (map? %) (dissoc % "bridge/request-id") %))
+   (keep #(when (map? %) (get % "bridge/request-id")) (vals data))])
 
 (defn- find-handler
   "The Ring handler of one of the three routes: 0 http, 1 sse, 2 ws."
@@ -75,18 +84,24 @@
 (deftest http-answers-each-name-apart
   (with-server (find-handler (bridge/make-routes-for-messages handlers settings (with-new-meter options)) 0 :post)
     (fn [port]
-      (testing "each name answered under its name; one failing doesn't stop the other"
-        (is (= [200 "{\"greetings/hello\":{\"hello\":\"Anna\"},\"greetings/fail\":{\"error\":\"Something went wrong.\"}}"]
-               (post-json port "{\"greetings/hello\":{\"name\":\"Anna\"},\"greetings/fail\":{}}"))))
-      (testing "an unknown name: an error under it"
-        (is (= [200 "{\"nobody/home\":{\"error\":\"No handler named :nobody/home\"}}"]
-               (post-json port "{\"nobody/home\":{}}"))))
+      (testing "each name answered under its name; one failing doesn't stop the other, and the POST stays 200"
+        (let [[status body] (post-json port "{\"greetings/hello\":{\"name\":\"Anna\"},\"greetings/fail\":{}}")
+              [data ids]    (without-request-ids (read-json body))]
+          (is (= [200 {"greetings/hello" {"hello" "Anna"}
+                       "greetings/fail"  {"bridge/refused" "bridge/failed" "bridge/data" nil}}]
+                 [status data]))
+          (is (= 1 (count ids)) "the failure carries the request id; the data doesn't")))
+      (testing "an unknown name: :bridge/failed under it"
+        (let [[status body] (post-json port "{\"nobody/home\":{}}")]
+          (is (= [200 {"nobody/home" {"bridge/refused" "bridge/failed" "bridge/data" nil}}]
+                 [status (first (without-request-ids (read-json body)))]))))
       (testing "with shapes: params arrive as real types, the answer leaves as JSON by its shape"
         (is (= [200 "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"120.50\"}}"]
                (post-json port "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\"}}"))))
-      (testing "params that don't fit the shape: errors by key, no step runs"
-        (is (= [200 "{\"shops/total\":{\"errors\":{\"shop/id\":[\"should be an id\"]}}}"]
-               (post-json port "{\"shops/total\":{\"shop/id\":\"seven\"}}"))))
+      (testing "params that don't fit the shape: :bridge/invalid, errors by key, no step runs"
+        (let [[status body] (post-json port "{\"shops/total\":{\"shop/id\":\"seven\"}}")]
+          (is (= [200 {"shops/total" {"bridge/refused" "bridge/invalid" "bridge/data" {"errors" {"shop/id" ["should be an id"]}}}}]
+                 [status (first (without-request-ids (read-json body)))]))))
       (testing "not a JSON object: 400"
         (is (= 400 (first (post-json port "[1,2]"))))))))
 
@@ -152,7 +167,11 @@
                                              :headers     {"x-forwarded-for" asker}
                                              :body        (java.io.ByteArrayInputStream. (.getBytes "{\"greetings/hello\":{\"name\":\"Anna\"}}"))})))]
     (is (= "{\"greetings/hello\":{\"hello\":\"Anna\"}}" (ask "1.1.1.1")))
-    (is (= "{\"greetings/hello\":{\"error\":\"Too many requests.\"}}" (ask "1.1.1.1")))
+    (let [refusal (get (read-json (ask "1.1.1.1")) "greetings/hello")]
+      (is (= ["bridge/too-many" true true]
+             [(get refusal "bridge/refused") (< 59000 (get-in refusal ["bridge/data" "retry-after-ms"]) 60001)
+              (string? (get refusal "bridge/request-id"))])
+          "refused, with how long until one more is let through"))
     (is (= "{\"greetings/hello\":{\"hello\":\"Anna\"}}" (ask "2.2.2.2"))
         "another asker behind the same proxy has its own bucket")))
 
@@ -186,6 +205,8 @@
 
 (def ^:private what-steps-may-use (atom []))
 
+(def ^:private broken-request-id (atom nil))
+
 (def ^:private steps-that-log
   {:greetings/noted  (make-handler [{:name  :note
                                      :enter (fn [{:bridge/keys [log wire] :as context}]
@@ -202,16 +223,18 @@
 (deftest each-message-gets-a-log-with-its-own-request-id
   (reset! test-log/lines [])
   (let [ask #(bridge/answer-message steps-that-log :no-rate-limits {} % {:wire wire :log log})]
-    (is (= {:greetings/noted "noted" :greetings/broken {:error "Something went wrong."}}
-           (ask {:greetings/noted {} :greetings/broken {}})))
+    (let [answer (ask {:greetings/noted {} :greetings/broken {}})]
+      (is (= {:greetings/noted "noted" :greetings/broken {:bridge/refused :bridge/failed :bridge/data nil}}
+             (update answer :greetings/broken dissoc :bridge/request-id)))
+      (reset! broken-request-id (get-in answer [:greetings/broken :bridge/request-id])))
     (ask {:greetings/noted {}})
     (let [[first-noted second-noted] (test-log/find-lines "test/step-ran")
           [about-to-break]           (test-log/find-lines "test/about-to-break")
           [failed]                   (test-log/find-lines "bridge/handler-failed")
           request-id                 #(get-in % ["context" "request-id"])]
       (is (re-matches #"[0-9a-f-]{36}" (request-id first-noted)) "a new random id")
-      (is (= (request-id first-noted) (request-id about-to-break) (request-id failed))
-          "every name of one message shares its message's id")
+      (is (= (request-id first-noted) (request-id about-to-break) (request-id failed) @broken-request-id)
+          "every name of one message shares its message's id, and the failure's answer carries it")
       (is (not= (request-id first-noted) (request-id second-noted)) "the next message has its own")
       (is (= [true true] @what-steps-may-use) "the steps get the app's wire too")
       (testing "a failure is written to the log the steps had got to"
@@ -270,4 +293,105 @@
                                       {:wire wire :log log})]
     (is (= {:greetings/hello false :greetings/fail true :shops/total true :nobody/home true}
            (update-vals answer bridge/is-error-answer?))
-        "a refusal, params that didn't fit, an unknown name: errors; the greeting: data")))
+        "a failure, params that didn't fit, an unknown name: refusals; the greeting: data"))
+  (testing "one key tells them: :bridge/refused"
+    (is (true? (bridge/is-error-answer? {:bridge/refused :order/no-address :bridge/data nil})))
+    (doseq [data [{:error "Not found."} {:errors {}} {:bridge/data 1} [] nil "x"]]
+      (is (false? (bridge/is-error-answer? data)) (pr-str data)))))
+
+;; -----------------------------------------------------------------------------
+;; Refusals: a named reason, declared on its handler
+
+(def ^:private shipped-at #inst "2026-10-20T08:30:00Z")
+
+(defn- refuse-with [reason data]
+  {:name :refuse :enter #(bridge/refuse % reason data)})
+
+(def ^:private refusing
+  {:orders/ship       (assoc (make-handler [(refuse-with :order/already-shipped {:order/shipped-at (.toInstant ^java.util.Date shipped-at)})])
+                             :refusals {:order/already-shipped [:map [:order/shipped-at :time/instant]]
+                                        :order/no-address      nil})
+   :orders/no-address (assoc (make-handler [(refuse-with :order/no-address nil)])
+                             :refusals {:order/no-address nil})
+   :orders/undeclared (make-handler [(refuse-with :order/already-shipped nil)])
+   :orders/unfit      (assoc (make-handler [(refuse-with :order/already-shipped {:order/shipped-at "yesterday" :extra 1})])
+                             :refusals {:order/already-shipped [:map [:order/shipped-at :time/instant]]})
+   :orders/nil-data   (assoc (make-handler [(refuse-with :order/no-address {:street "x"})])
+                             :refusals {:order/no-address nil})
+   :orders/silent     (make-handler [{:name :nothing :enter identity}])
+   :orders/leaky      (assoc (make-handler [{:name :answer :enter #(bridge/add-answer-to-context % {:order/id 1 :password "x"})}])
+                             :answer-shape [:map [:order/id :int]])})
+
+(deftest a-step-refuses-with-a-reason-its-handler-declares
+  (reset! test-log/lines [])
+  (let [answer (bridge/answer-message refusing :no-rate-limits {} {:orders/ship {} :orders/no-address {}} {:wire wire :log log})]
+    (is (= {:orders/ship       {:bridge/refused :order/already-shipped :bridge/data {:order/shipped-at "2026-10-20T08:30:00Z"}}
+            :orders/no-address {:bridge/refused :order/no-address :bridge/data nil}}
+           (update-vals answer #(dissoc % :bridge/request-id)))
+        "its data by its reason's shape, as JSON data; nil for a reason of nil shape")
+    (is (= 1 (count (set (map :bridge/request-id (vals answer))))) "every refusal of one message carries its id")
+    (is (re-matches #"[0-9a-f-]{36}" (get-in answer [:orders/ship :bridge/request-id])))
+    (testing "each refusal is in the log, under the same id"
+      (is (= #{["order/already-shipped" (get-in answer [:orders/ship :bridge/request-id]) "info"]
+               ["order/no-address" (get-in answer [:orders/ship :bridge/request-id]) "info"]}
+             (set (map (juxt #(get-in % ["data" "bridge/refused"]) #(get-in % ["context" "request-id"]) #(get % "level"))
+                       (test-log/find-lines "bridge/refused"))))))))
+
+(deftest a-refusal-that-is-a-bug-is-answered-failed-and-logged
+  (reset! test-log/lines [])
+  (let [answer (bridge/answer-message refusing :no-rate-limits {}
+                                      {:orders/undeclared {} :orders/unfit {} :orders/nil-data {} :orders/silent {} :orders/leaky {}}
+                                      {:wire wire :log log})]
+    (is (= {:orders/undeclared :bridge/failed :orders/unfit :bridge/failed :orders/nil-data :bridge/failed
+            :orders/silent :bridge/failed :orders/leaky :bridge/failed}
+           (update-vals answer :bridge/refused))
+        "a reason the handler doesn't declare, data that doesn't fit, data for a reason of none, no step answering, an answer that doesn't fit")
+    (is (every? :bridge/request-id (vals answer)))
+    (is (= {"bridge/undeclared-refusal" ["orders/undeclared"]
+            "bridge/refusal-unfit"      ["orders/nil-data" "orders/unfit"]
+            "bridge/no-step-answered"   ["orders/silent"]
+            "bridge/answer-unfit"       ["orders/leaky"]}
+           (update-vals (group-by #(get % "event") (filter #(= "error" (get % "level")) @test-log/lines))
+                        #(vec (sort (map (fn [line] (get-in line ["data" "bridge/message-name"])) %)))))
+        "each written to the log, :error, with its details")))
+
+(deftest refusals-over-http-and-ws-are-the-same
+  (let [routes (bridge/make-routes-for-messages refusing settings (with-new-meter options))
+        expect {"orders/no-address" {"bridge/refused" "order/no-address" "bridge/data" nil}}]
+    (with-server (find-handler routes 0 :post)
+      (fn [port]
+        (is (= expect (first (without-request-ids (read-json (second (post-json port "{\"orders/no-address\":{}}")))))))))
+    (with-server (find-handler routes 2 :get)
+      (fn [port]
+        (let [received (promise)
+              socket   (.join (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient))
+                                           (URI. (str "ws://localhost:" port "/mail/ws"))
+                                           (reify WebSocket$Listener
+                                             (onText [_ socket text _last]
+                                               (deliver received (str text))
+                                               (.request socket 1)
+                                               nil))))]
+          (.join (.sendText socket "{\"orders/no-address\":{}}" true))
+          (is (= expect (first (without-request-ids (read-json (deref received 5000 "{}"))))))
+          (.join (.sendClose socket 1000 "done")))))))
+
+(deftest a-handler-declares-its-reasons
+  (let [problems #(try (bridge/answer-message % :no-rate-limits {} {} {:wire wire :log log}) nil
+                       (catch clojure.lang.ExceptionInfo e (ex-data e)))]
+    (testing ":refusals is written out, {} for none"
+      (is (= {:t/x {:refusals ["missing required key"]}}
+             (:errors (problems {:t/x (dissoc (make-handler []) :refusals)})))))
+    (testing "bridge's own reasons are bridge's"
+      (is (= :bridge/bad-handlers (:type (problems {:t/x (assoc (make-handler []) :refusals {:bridge/failed nil})})))))
+    (testing "a reason is a namespaced keyword"
+      (is (= :bridge/bad-handlers (:type (problems {:t/x (assoc (make-handler []) :refusals {:no-address nil})})))))
+    (testing "an :answer-shape may not name :bridge/refused, refused before the start"
+      (is (= {:t/x {:answer-shape ["may not name :bridge/refused: a refusal is made by refuse, and declared in :refusals"]}}
+             (:errors (problems {:t/x (assoc (make-handler []) :answer-shape [:map [:bridge/refused :keyword]])}))))
+      (is (= :bridge/bad-handlers
+             (:type (try (bridge/make-routes-for-messages {:t/x (assoc (make-handler []) :answer-shape [:map [:bridge/refused :keyword]])}
+                                                          settings (with-new-meter options))
+                         (catch clojure.lang.ExceptionInfo e (ex-data e)))))))))
+
+(deftest bridge-says-its-own-reasons
+  (is (= #{:bridge/too-many :bridge/failed :bridge/invalid :bridge/no-answer :bridge/unfit} (set (keys bridge/refusals)))))

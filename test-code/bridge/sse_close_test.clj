@@ -25,7 +25,7 @@
 
 (def ^:private handlers
   {:t/ok {:steps        [{:name :answer :enter #(bridge/add-answer-to-context % {})}]
-          :params-shape nil :answer-shape nil :rate-limit nil :run-steps-in nil}})
+          :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil}})
 
 (defn- start!
   "A server whose sse lines are kept in opened and, each time one closes,

@@ -3,16 +3,19 @@
    answer comes back by its :answer-shape, and a named message finds its
    handler. Requiring bridge.api proves the whole browser side compiles."
   (:require
-   [cljs.test :refer [deftest is testing]]
+   [cljs.test :refer [async deftest is testing]]
    [bridge.api]
    [bridge.messages :as messages]
    [bridge.shapes :as shapes]
-   [bridge.test-wire :refer [wire]]))
+   [bridge.test-wire :refer [wire]]
+   [wire.time]))
 
 (def ^:private shapes-by-name
   {:shops/total     {:params-shape [:map [:shop/id :uuid]]
-                     :answer-shape [:map [:shop/id :uuid] [:total :decimal]]}
-   :greetings/hello {:params-shape nil :answer-shape nil}})
+                     :answer-shape [:map [:shop/id :uuid] [:total :decimal]]
+                     :refusals     {:shop/closed [:map [:shop/opens-at :time/instant]]
+                                    :shop/gone   nil}}
+   :greetings/hello {:params-shape nil :answer-shape nil :refusals {}}})
 
 (defn- find-problems [f]
   (try (f) nil
@@ -38,18 +41,34 @@
   (let [answer (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:shop/id shop-id :total "120.50"}})]
     (is (= {:shops/total {:shop/id shop-id :total "120.50"}} answer)
         "fits its shape; in the browser an id and a decimal are their text (wire)"))
-  (testing "an answer that doesn't fit stays as it came, with its errors"
+  (testing "an answer that doesn't fit: :bridge/unfit, with why"
     (let [answer (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:shop/id "seven" :total "1"}})]
-      (is (contains? (:shops/total answer) :bridge/errors))))
-  (testing "an error answer the server made instead of data passes as it is"
-    (is (= {:shops/total {:error "Not found."}}
-           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:error "Not found."}})))
-    (is (= {:shops/total {:errors {:shop/id ["should be a uuid"]}}}
-           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:errors {:shop/id ["should be a uuid"]}}}))))
-  (testing "a name the shapes don't have: as it came, with its errors; notes pass"
+      (is (= :bridge/unfit (get-in answer [:shops/total :bridge/refused])))
+      (is (contains? (get-in answer [:shops/total :bridge/data :errors]) :shop/id))))
+  (testing "a refusal passes the answer shape: its reason a keyword, its data by its reason's shape"
+    (let [{:shops/keys [total]} (shapes/turn-answer-into-shaped-data
+                                 wire shapes-by-name
+                                 {:shops/total {:bridge/refused "shop/closed" :bridge/data {:shop/opens-at "2026-10-24T08:00:00Z"}
+                                                :bridge/request-id "r-1"}})]
+      (is (= [:shop/closed "r-1"] [(:bridge/refused total) (:bridge/request-id total)]))
+      (is (instance? wire.time/Instant (get-in total [:bridge/data :shop/opens-at])) "shaped, as data is"))
+    (is (= {:shops/total {:bridge/refused :shop/gone :bridge/data nil :bridge/request-id "r-2"}}
+           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:bridge/refused "shop/gone" :bridge/data nil :bridge/request-id "r-2"}})))
+    (is (= {:shops/total {:bridge/refused :bridge/invalid :bridge/data {:errors {:shop/id ["should be an id"]}} :bridge/request-id "r-3"}}
+           (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:bridge/refused "bridge/invalid"
+                                                                                   :bridge/data {:errors {:shop/id ["should be an id"]}}
+                                                                                   :bridge/request-id "r-3"}}))
+        "bridge's own reasons, for every name"))
+  (testing "a reason the name doesn't declare, or data that doesn't fit: :bridge/unfit, the server's request id kept"
+    (doseq [refusal [{:bridge/refused "shop/burned" :bridge/data nil :bridge/request-id "r-4"}
+                     {:bridge/refused "shop/closed" :bridge/data {:shop/opens-at "soon"} :bridge/request-id "r-4"}
+                     {:bridge/refused "shop/gone" :bridge/data {:why "x"} :bridge/request-id "r-4"}]]
+      (is (= [:bridge/unfit "r-4"]
+             ((juxt :bridge/refused :bridge/request-id) (:shops/total (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total refusal}))))
+          (pr-str refusal))))
+  (testing "a name the shapes don't have: :bridge/unfit; notes pass"
     (let [answer (shapes/turn-answer-into-shaped-data wire shapes-by-name {:nobody/home {:a 1} :bridge/notes {:x 1}})]
-      (is (= {:a 1} (get-in answer [:nobody/home :data])))
-      (is (contains? (:nobody/home answer) :bridge/errors))
+      (is (= {:bridge/refused :bridge/unfit :bridge/data {:errors ["No shapes named :nobody/home"]}} (:nobody/home answer)))
       (is (= {:x 1} (:bridge/notes answer))))))
 
 (deftest a-named-message-finds-its-handler
@@ -67,10 +86,15 @@
     (is (= :bridge/bad-options (:type problems)) "no :on-open, not even nil: refused before the line opens")
     (is (contains? (:errors problems) :on-open))))
 
-(deftest each-name-says-both-shapes
+(deftest each-name-says-its-shapes-and-reasons
   (let [problems (find-problems #(bridge.api/send-message! "/mail/http" {:shops/total {:params-shape nil}} {:shops/total {}} {:wire wire}))]
     (is (= :bridge/bad-shapes (:type problems)) "refused before anything is sent")
-    (is (= #{:answer-shape} (set (keys (:shops/total (:errors problems))))))))
+    (is (= #{:answer-shape :refusals} (set (keys (:shops/total (:errors problems)))))))
+  (testing "an answer shape naming :bridge/refused, and bridge's own reasons, are refused"
+    (is (= :bridge/bad-shapes (:type (find-problems #(bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape [:map [:bridge/refused :string]] :refusals {}}}
+                                                                               {:t/x {}} {:wire wire :headers {}})))))
+    (is (= :bridge/bad-shapes (:type (find-problems #(bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape nil :refusals {:bridge/failed nil}}}
+                                                                               {:t/x {}} {:wire wire :headers {}})))))))
 
 (deftest every-line-and-message-takes-the-apps-wire
   (doseq [[what call] {"send-message!" #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {})
@@ -96,19 +120,50 @@
           fetch (.-fetch js/globalThis)]
       (set! (.-fetch js/globalThis) (fn [address options]
                                       (reset! sent [address (js->clj (.-headers options))])
-                                      (js/Promise.resolve #js {:text (fn [] (js/Promise.resolve "{\"greetings/hello\":1}"))})))
+                                      (js/Promise.resolve #js {:status 200 :text (fn [] (js/Promise.resolve "{\"greetings/hello\":1}"))})))
       (try
         (bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire :headers {"idempotency-key" "k-1"}})
         (is (= ["/mail/http" {"idempotency-key" "k-1" "accept" "application/json" "content-type" "application/json"}] @sent))
         (finally (set! (.-fetch js/globalThis) fetch))))))
 
 (deftest an-error-answer-is-told-from-data
-  (testing "bridge's error answers"
-    (doseq [answer [{:error "Not found."}
-                    {:errors {:shop/id ["should be an id"]}}
-                    {:bridge/errors ["No shapes named :nobody/home"] :data {:a 1}}
+  (testing "a refusal: one key, :bridge/refused"
+    (doseq [answer [{:bridge/refused :shop/gone :bridge/data nil :bridge/request-id "r"}
+                    {:bridge/refused :bridge/no-answer :bridge/data {:http-status nil}}
                     (:shops/total (shapes/turn-answer-into-shaped-data wire shapes-by-name {:shops/total {:shop/id "seven" :total "1"}}))]]
       (is (true? (bridge.api/is-error-answer? answer)) (pr-str answer))))
-  (testing "data, even data with an :error key beside others"
-    (doseq [answer [{:error "x" :order/id 1} {:errors [] :total 2} [] nil "Not found." 7 {}]]
+  (testing "data, the old error shapes among it"
+    (doseq [answer [{:error "Not found."} {:errors {}} {:bridge/errors []} [] nil "Not found." 7 {}]]
       (is (false? (bridge.api/is-error-answer? answer)) (pr-str answer)))))
+
+(defn- with-fetch
+  "Runs (f) with fetch answered by (answer address options), a promise."
+  [answer f]
+  (let [fetch (.-fetch js/globalThis)]
+    (set! (.-fetch js/globalThis) answer)
+    (-> (f) (.finally #(set! (.-fetch js/globalThis) fetch)))))
+
+(defn- respond [status text]
+  (fn [_ _] (js/Promise.resolve #js {:status status :text (fn [] (js/Promise.resolve text))})))
+
+(deftest no-answer-is-a-named-reason-not-a-failed-promise
+  (async done
+    (let [send!  #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {} :shops/total {:shop/id shop-id}}
+                                            {:wire wire :headers {}})
+          no     (fn [status] {:greetings/hello {:bridge/refused :bridge/no-answer :bridge/data {:http-status status}}
+                               :shops/total     {:bridge/refused :bridge/no-answer :bridge/data {:http-status status}}})]
+      (-> (with-fetch (respond 502 "<html>Bad gateway</html>") send!)
+          (.then #(is (= (no 502) %) "a proxy's page: each name, with the status"))
+          (.then #(with-fetch (respond 413 "Payload Too Large") send!))
+          (.then #(is (= (no 413) %)))
+          (.then #(with-fetch (respond 200 "[1,2]") send!))
+          (.then #(is (= (no 200) %) "JSON, but not the server's answer"))
+          (.then #(with-fetch (fn [_ _] (js/Promise.reject (js/TypeError. "Failed to fetch"))) send!))
+          (.then #(is (= (no nil) %) "no response at all: no status"))
+          (.then #(with-fetch (respond 200 "{\"greetings/hello\":{\"bridge/refused\":\"bridge/too-many\",\"bridge/data\":{\"retry-after-ms\":1500},\"bridge/request-id\":\"r\"},\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"2\"}}") send!))
+          (.then #(is (= {:greetings/hello {:bridge/refused :bridge/too-many :bridge/data {:retry-after-ms 1500} :bridge/request-id "r"}
+                          :shops/total     {:shop/id shop-id :total "2"}}
+                         %)
+                      "the server's answer: a refusal and data side by side"))
+          (.catch #(is false (str %)))
+          (.finally done)))))

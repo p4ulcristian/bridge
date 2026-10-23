@@ -10,12 +10,14 @@
 (def outcomes
   "How a named message was answered:
    :ok         its answer, data
-   :invalid    its params didn't fit their shape ({:errors …})
-   :refused    a step refused it ({:error …}), or no step answered
-   :too-many   over its rate limit
-   :failed     a step threw (\"Something went wrong.\")
-   :unfit      its answer didn't fit its :answer-shape
-   :no-handler no handler has its name"
+   :invalid    its params didn't fit their shape (:bridge/invalid)
+   :refused    a step refused it, with a reason its handler declares
+   :too-many   over its rate limit (:bridge/too-many)
+   :failed     a step threw, no step answered, or a step refused with a reason its
+               handler doesn't declare (:bridge/failed)
+   :unfit      its answer didn't fit its :answer-shape, or its refusal's data its
+               reason's shape (:bridge/failed)
+   :no-handler no handler has its name (:bridge/failed)"
   #{:ok :invalid :refused :too-many :failed :unfit :no-handler})
 
 (defn declare-metrics!
