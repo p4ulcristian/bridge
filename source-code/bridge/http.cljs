@@ -11,13 +11,15 @@
    no CORS headers: a request goes there only, with the page's cookie. An
    answer is never kept (the server says no-store too); a redirect in front
    of the server (a proxy) is followed. The options' :headers go beside
-   bridge's own two."
-  [wire headers message]
+   bridge's own two; :keep-alive? is fetch's keepalive, the request
+   finishing after the page has closed."
+  [wire headers keep-alive? message]
   #js {:method      "POST"
        :mode        "same-origin"
        :credentials "same-origin"
        :cache       "no-store"
        :redirect    "follow"
+       :keepalive   keep-alive?
        :headers     (clj->js (merge headers {"accept" "application/json" "content-type" "application/json"}))
        :body        (wire/turn-data-into-json-text wire message)})
 
@@ -42,9 +44,9 @@
    name without shapes isn't sent."
   [address shapes-by-name message options]
   (settings/check-shapes-by-name shapes-by-name)
-  (let [{:keys [wire headers]} (settings/check-send-options options)
-        json-data              (shapes/turn-message-into-json-data wire shapes-by-name message)]
-    (-> (js/fetch address (make-fetch-options wire headers json-data))
+  (let [{:keys [wire headers keep-alive?]} (settings/check-send-options options)
+        json-data                          (shapes/turn-message-into-json-data wire shapes-by-name message)]
+    (-> (js/fetch address (make-fetch-options wire headers keep-alive? json-data))
         (.then (fn [response]
                  (-> (.text response)
                      (.then #(read-answer wire shapes-by-name message (.-status response) %)

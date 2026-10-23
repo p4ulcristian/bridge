@@ -44,3 +44,4 @@ All but the last eleven were made while mailroom was three libraries inside Grou
 ## Replaced
 
 - [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md), replaced by [Steps are a list over one context](2026-10-22-steps-are-a-list-over-one-context.md)
+- [Every send writes out its options, its once-key among them](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-every-send-writes-out-its-options-its-once-key-among-them.md) (parlor's; bridge's part, `send-message!`'s required `:keep-alive?`, built on tidy-up, not released)

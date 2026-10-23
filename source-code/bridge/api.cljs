@@ -20,7 +20,7 @@
                                                   :exact-decimals   wire.big/big}))
 
      (bridge/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id id}}
-                             {:wire wire :headers {}})                            ; a promise of the shaped answer
+                             {:wire wire :headers {} :keep-alive? false})        ; a promise of the shaped answer
      (bridge/open-sse-line! (:sse addresses) shapes-by-name {:sync/changed on-change}
                               {:wire wire :on-open nil :reconnect-after-ms sse-reconnect-after-ms})   ; the server's setting, from the page
      (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said on-said}
@@ -48,8 +48,11 @@
    the shapes don't have throws (:bridge/no-shapes); nothing is sent.
    Options, every key required: :wire, the app's wire; :headers, more
    request headers by lowercase name, {} for none (accept and
-   content-type are bridge's own). A missing or bad option refuses,
-   :bridge/bad-options."
+   content-type are bridge's own); :keep-alive?, true for a request that
+   finishes after the page closes (fetch's keepalive: the browser refuses
+   a body that, with the other keepalive requests in flight, passes 64 KB,
+   and that is :bridge/no-answer), false for a plain one. A missing or
+   bad option refuses, :bridge/bad-options."
   [address shapes-by-name message options]
   (http/send-message! address shapes-by-name message options))
 

@@ -294,13 +294,18 @@
   "send-message!'s options, every key required. :wire: the app's wire,
    made from the browser's settings. :headers: more request headers, by
    lowercase name, {} for none (a write's one-time key, say); accept and
-   content-type are bridge's own and refused."
+   content-type are bridge's own and refused. :keep-alive?: true, the
+   request finishes even when the page closes (fetch's keepalive; the
+   browser refuses one whose body, with the other keepalive requests in
+   flight, passes 64 KB, which is :bridge/no-answer); false, a plain
+   request."
   [:map {:closed true}
    wire-entry
    [:headers [:and
               [:map-of :string :string]
               [:fn {:error/message "header names are written in lowercase"} has-lowercase-names?]
-              [:fn {:error/message "accept and content-type are bridge's own"} leaves-bridge-headers-alone?]]]])
+              [:fn {:error/message "accept and content-type are bridge's own"} leaves-bridge-headers-alone?]]]
+   [:keep-alive? :boolean]])
 
 (def sse-options-shape
   "open-sse-line!'s options, every key required. :wire: the app's wire.

@@ -92,9 +92,9 @@
     (is (= #{:answer-shape :refusals} (set (keys (:shops/total (:errors problems)))))))
   (testing "an answer shape naming :bridge/refused, and bridge's own reasons, are refused"
     (is (= :bridge/bad-shapes (:type (find-problems #(bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape [:map [:bridge/refused :string]] :refusals {}}}
-                                                                               {:t/x {}} {:wire wire :headers {}})))))
+                                                                               {:t/x {}} {:wire wire :headers {} :keep-alive? false})))))
     (is (= :bridge/bad-shapes (:type (find-problems #(bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape nil :refusals {:bridge/failed nil}}}
-                                                                               {:t/x {}} {:wire wire :headers {}})))))))
+                                                                               {:t/x {}} {:wire wire :headers {} :keep-alive? false})))))))
 
 (deftest every-line-and-message-takes-the-apps-wire
   (doseq [[what call] {"send-message!" #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {})
@@ -106,25 +106,32 @@
 
 (deftest more-headers-go-with-a-message
   (testing ":headers is written out, {} for none; accept and content-type are bridge's"
-    (is (contains? (:errors (find-problems #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire})))
-                   :headers))
+    (is (= #{:headers :keep-alive?}
+           (set (keys (:errors (find-problems #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire})))))))
     (is (= :bridge/bad-options
            (:type (find-problems #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
-                                                              {:wire wire :headers {"content-type" "text/plain"}})))))
+                                                              {:wire wire :headers {"content-type" "text/plain"} :keep-alive? false})))))
     (is (= :bridge/bad-options
            (:type (find-problems #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
-                                                              {:wire wire :headers {"Idempotency-Key" "k"}}))))
+                                                              {:wire wire :headers {"Idempotency-Key" "k"} :keep-alive? false}))))
         "names in lowercase"))
-  (testing "they go out beside bridge's own"
-    (let [sent  (atom nil)
+  (testing "they go out beside bridge's own; :keep-alive? is fetch's keepalive"
+    (let [sent  (atom [])
           fetch (.-fetch js/globalThis)]
       (set! (.-fetch js/globalThis) (fn [address options]
-                                      (reset! sent [address (js->clj (.-headers options))])
+                                      (swap! sent conj [address (js->clj (.-headers options)) (.-keepalive options)])
                                       (js/Promise.resolve #js {:status 200 :text (fn [] (js/Promise.resolve "{\"greetings/hello\":1}"))})))
       (try
-        (bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire :headers {"idempotency-key" "k-1"}})
-        (is (= ["/mail/http" {"idempotency-key" "k-1" "accept" "application/json" "content-type" "application/json"}] @sent))
-        (finally (set! (.-fetch js/globalThis) fetch))))))
+        (bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire :headers {"idempotency-key" "k-1"} :keep-alive? false})
+        (bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}} {:wire wire :headers {} :keep-alive? true})
+        (is (= [["/mail/http" {"idempotency-key" "k-1" "accept" "application/json" "content-type" "application/json"} false]
+                ["/mail/http" {"accept" "application/json" "content-type" "application/json"} true]]
+               @sent))
+        (finally (set! (.-fetch js/globalThis) fetch)))))
+  (testing ":keep-alive? is true or false"
+    (is (= {:keep-alive? ["should be a boolean"]}
+           (:errors (find-problems #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
+                                                              {:wire wire :headers {} :keep-alive? nil})))))))
 
 (deftest an-error-answer-is-told-from-data
   (testing "a refusal: one key, :bridge/refused"
@@ -149,7 +156,7 @@
 (deftest no-answer-is-a-named-reason-not-a-failed-promise
   (async done
     (let [send!  #(bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {} :shops/total {:shop/id shop-id}}
-                                            {:wire wire :headers {}})
+                                            {:wire wire :headers {} :keep-alive? false})
           no     (fn [status] {:greetings/hello {:bridge/refused :bridge/no-answer :bridge/data {:http-status status}}
                                :shops/total     {:bridge/refused :bridge/no-answer :bridge/data {:http-status status}}})]
       (-> (with-fetch (respond 502 "<html>Bad gateway</html>") send!)
