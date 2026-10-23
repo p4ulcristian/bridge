@@ -34,6 +34,7 @@ All but the last nine were made while mailroom was three libraries inside Ground
 - [A plain route is rate-limited by the same buckets, through the api](2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)
 - [mailroom is renamed bridge](2026-10-23-mailroom-is-renamed-bridge.md)
 - [The server is Jetty 12 through rj9a](2026-10-23-the-server-is-jetty-12-through-rj9a.md)
+- [A message may come with no request](2026-10-23-a-message-may-come-with-no-request.md) (built on tidy-up, not released)
 
 ## Replaced
 

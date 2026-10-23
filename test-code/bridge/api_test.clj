@@ -165,6 +165,14 @@
          (try (bridge/answer-message handlers nil {} {:greetings/hello {:name "Anna"}} {:wire wire :log log})
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
       "nil is not a choice: :no-rate-limits is written out")
+  (testing "a message with no request (a REPL's): its steps find none, and nothing is counted"
+    (is (= {:greetings/hello {:hello "Anna"}}
+           (bridge/answer-message handlers :no-rate-limits nil {:greetings/hello {:name "Anna"}} {:wire wire :log log})))
+    (is (= :bridge/bad-options
+           (try (bridge/answer-message handlers (bridge/make-message-limiter {:find-rate-limit-key #(:remote-addr %) :buckets-before-cleanup 10})
+                                       nil {:greetings/hello {:name "Anna"}} {:wire wire :log log})
+                (catch clojure.lang.ExceptionInfo e (:type (ex-data e)))))
+        "a limiter tells askers apart by their request"))
   (let [{:keys [type errors]} (try (bridge/answer-message handlers :no-rate-limits {} {:greetings/hello {:name "Anna"}} {})
                                    (catch clojure.lang.ExceptionInfo e (ex-data e)))]
     (is (= :bridge/bad-options type) "bridge makes no wire and no log: the caller hands its own in")

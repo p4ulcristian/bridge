@@ -253,7 +253,9 @@
    addresses. rate-limits is :no-rate-limits, written out (nothing is
    counted), or a limiter from make-message-limiter (each handler's
    :rate-limit counted per asker). request is the Ring request it came with (its cookie, its
-   origin). Notes, when a handler has them, are beside the answers under
+   origin), at :bridge/request in each step's context, or nil for a message
+   that came with none (a REPL's), whose steps then find no request; a
+   limiter needs a request to tell askers apart. Notes, when a handler has them, are beside the answers under
    :bridge/notes. Options, every key required: :wire, the app's wire;
    :log, the app's log, which the message's log is made from. The handlers
    and the options are checked first."
@@ -261,6 +263,9 @@
   (settings/check-handlers handlers)
   (settings/check-rate-limits-outside-a-server rate-limits)
   (settings/check-answer-options options)
+  (when (and (nil? request) (not= :no-rate-limits rate-limits))
+    (throw (ex-info "A message with no request has no asker to count: its rate limits are :no-rate-limits"
+                    {:type :bridge/bad-options})))
   ;; outside a server nothing is counted: answer-message takes no meter
   (messages/answer-named-messages (:wire options) (:log options) handlers rate-limits metrics/note-nothing request message))
 
