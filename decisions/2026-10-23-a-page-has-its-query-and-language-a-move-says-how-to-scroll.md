@@ -1,5 +1,7 @@
 # A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first
 
+> **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
+
 > The user's decision, 2026-10-23 (house's "routing extras"). Since v0.6.0. Changes in part [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): `start-following-address!` takes options, `go-to-page!` and `make-address-of-page` a query. Carries over Groundwork v0.5.0's `groundwork.browser.routing` (house's tag v0.5.0): the address parsing, the history and the scrolling; the re-frame parts went to parlor.
 
 **Decision:** the browser's routing (`mailroom.routes`) reads more of an address and follows the address bar itself, in place of reitit-frontend's `easy` (reitit's router still matches).

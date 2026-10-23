@@ -1,5 +1,7 @@
 # A message sent over http may carry more headers, written out
 
+> **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
+
 > Since v0.5.0. Changes in part [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): `send-message!`'s options gain `:headers`.
 
 **Decision:** the browser's `send-message!` takes one more required option, `:headers`: more request headers, by lowercase name, `{}` for none. They go out beside mailroom's own two, `accept` and `content-type`, which an app can't replace: naming either refuses, `:mailroom/bad-options`, and so does a name with a capital letter.

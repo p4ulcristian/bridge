@@ -1,5 +1,7 @@
 # An sse line the browser left is closed by its next ping or send, and its close is run once
 
+> **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
+
 > Changes in part [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md): an sse line a browser leaves is counted out of `mailroom_open_lines` too. Since v0.7.1.
 
 **The cause:** http-kit 2.8.1 never calls `:on-close` when a browser leaves an sse line ([http-kit#578](https://github.com/http-kit/http-kit/issues/578)). Its server makes a channel for each connection when it is accepted, and a new one for each request on it; when the socket closes, it tells the connection's first channel, which no request has. The line's own channel stays "open": `open?` is true and `send!` returns true, its write failing quietly inside http-kit. So `:on-sse-close` never ran, `mailroom_open_lines{pipe="sse"}` only went up, and an app that keeps its lines (doorbell's `remove-sse-line!`) kept every line ever opened. ws lines aren't hit: an upgrade puts the request's channel on the connection.
