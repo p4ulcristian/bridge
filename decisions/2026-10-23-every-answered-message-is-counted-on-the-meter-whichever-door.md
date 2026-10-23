@@ -20,3 +20,5 @@ Choices made while building, not asked:
 4. **`bridge.metrics/note-nothing` is gone;** `answer-message` counts through the same `make-note-answer` as the http address.
 
 Left for later, outside bridge: every `answer-message` caller adds `:meter` and `:metric-buckets`: doorman's `leaks.clj` and its tests, doorbell's tests, and the composer's `answer_as.clj` and `tools.clj` (the REPL's "ask as person", on the app's meter).
+
+Built since, on tidy-up (2026-10-23): doorman's leak test takes `:meter` and `:metric-buckets` (required) and its tests pass them; doorbell's tests; the composer's `answer-as` and the REPL's `ask-as-person`, on the app's meter.

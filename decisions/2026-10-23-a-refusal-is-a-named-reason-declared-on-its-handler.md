@@ -73,3 +73,5 @@ Choices made while building, not asked:
 23. **The libraries pin each other at their tidy-up commits** by full `:git/sha`: doorman and parlor bridge's, parlor dictionary's.
 
 Left for later: the composer (its `run_once.clj` texts as reasons, `:refusals` on its handlers, `:on-signed-out`, `check-texts-of-reasons` at the start, `put-refusals-into-shapes`, the repins); and doorbell, whose store still answers a rejected send `{:error "No answer from the server."}`, now data to parlor: with bridge's `send-message!` it comes only when the app's send function itself fails.
+
+Built since, on tidy-up (2026-10-23): the composer's part, in groundwork's [The composer takes named refusals](https://github.com/p4ulcristian/groundwork/blob/tidy-up/decisions/2026-10-23-the-composer-takes-named-refusals.md); doorbell's store answers a failed send `:bridge/no-answer {:http-status nil}`, in doorbell's [An ask with no answer is bridge's :bridge/no-answer refusal](https://github.com/p4ulcristian/doorbell/blob/tidy-up/decisions/2026-10-23-an-ask-with-no-answer-is-bridges-no-answer-refusal.md).
