@@ -49,7 +49,7 @@
                 (bridge/make-ring-handler-from-routes
                  (into (bridge/make-routes-for-messages handlers settings (with-new-meter options))
                        (bridge/make-server-routes-for-pages pages page-handler))
-                 {:files nil})
+                 {:files nil :not-found nil})
                 settings
                 {:log log})
         port   (:port server)]
@@ -60,6 +60,9 @@
         (is (= [200 "<html>the app</html>"] (send-request port "GET" "/orders/42" nil))))
       (testing "no route, no page: 404"
         (is (= 404 (first (send-request port "GET" "/nowhere" nil)))))
+      (testing "with :not-found, its answer"
+        (let [handler (bridge/make-ring-handler-from-routes [] {:files nil :not-found (fn [request] {:status 404 :headers {} :body (str "no " (:uri request))})})]
+          (is (= {:status 404 :headers {} :body "no /nowhere"} (handler {:request-method :get :uri "/nowhere" :headers {}})))))
       (finally (bridge/stop-server! server)))))
 
 (deftest a-page-needs-a-namespaced-name-an-address-and-a-title
@@ -83,7 +86,8 @@
   (let [folder  (make-files-folder)
         handler (bridge/make-ring-handler-from-routes [] {:files {:folder                     folder
                                                                     :hashed-name-min-hex-digits 8
-                                                                    :hashed-file-cache-seconds  600}})
+                                                                    :hashed-file-cache-seconds  600}
+                                                            :not-found nil})
         get-file #(handler {:request-method :get :uri % :headers {}})]
     (testing "a hashed name: kept as long as the option says"
       (is (= "public, max-age=600, immutable" (get-in (get-file "/main.3F9A0C1D.js") [:headers "cache-control"]))))
@@ -99,4 +103,4 @@
   (is (= :bridge/bad-options
          (try (bridge/make-ring-handler-from-routes [] {:files {:folder "x"}})
               (catch clojure.lang.ExceptionInfo e (:type (ex-data e))))))
-  (is (fn? (bridge/make-ring-handler-from-routes [] {:files nil}))))
+  (is (fn? (bridge/make-ring-handler-from-routes [] {:files nil :not-found nil}))))

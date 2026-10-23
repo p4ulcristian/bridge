@@ -58,7 +58,7 @@ The names are the handler table's: one no handler has is counted as
 |---|---|---|
 | server | `settings-shape` | the settings as a malli shape, every key required |
 | server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`, `:log` and `:meter`; a handler's `:rate-limit` counted per asker |
-| server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none) |
+| server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none), what no route answers from `:not-found` (nil: 404) |
 | server | `start-server!` `stop-server!` | Jetty 12, every request on a virtual thread; `{:log log}`; a stop closes the sse lines, lets running requests finish, then cuts |
 | server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` `close-line!` | the server sends on an open line by itself, by the wire the line keeps, or closes it; a line the browser left is closed when its socket ends |
 | server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out), or a message answered off the server's addresses (a limiter from `make-message-limiter`); `{:wire wire :log log}` |
@@ -153,7 +153,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
           (bridge/make-server-routes-for-pages pages page-handler))
     {:files {:folder                     "target/public"
              :hashed-name-min-hex-digits 8           ; main.3F9A0C1D.js is hashed
-             :hashed-file-cache-seconds  31536000}}) ; and kept a year; any other file: no-cache
+             :hashed-file-cache-seconds  31536000}   ; and kept a year; any other file: no-cache
+     :not-found nil})                             ; or (fn [request]): what no route and no file answers
    settings
    {:log log}))                                   ; failures no step caught
 

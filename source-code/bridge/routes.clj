@@ -72,20 +72,23 @@
       (send-gzipped-copy-when-there folder)
       (add-cache-header files)))
 
-(def ^:private default-handler
-  ;; written out as reitit's own: no route and no file, 404; a route
-  ;; without the request's method, 405; a handler that answered nil, 406
-  (reitit/create-default-handler {:not-found          (constantly {:status 404 :headers {} :body ""})
+(defn- make-default-handler
+  "Written out as reitit's own: no route and no file, not-found's answer
+   (or 404, empty, without one); a route without the request's method, 405;
+   a handler that answered nil, 406."
+  [not-found]
+  (reitit/create-default-handler {:not-found          (or not-found (constantly {:status 404 :headers {} :body ""}))
                                   :method-not-allowed (constantly {:status 405 :headers {} :body ""})
                                   :not-acceptable     (constantly {:status 406 :headers {} :body ""})}))
 
 (defn make-ring-handler-from-routes
   "The one Ring handler for the server, from reitit routes. With :files
    (nil for none), a GET no route matches is answered from its :folder on
-   disk, when it has the file. Otherwise a path that matches no route
-   answers 404, a method the route doesn't have 405."
-  [routes {:keys [files]}]
+   disk, when it has the file. Otherwise a path that matches no route is
+   answered by :not-found (nil: 404, empty), a method the route doesn't
+   have 405."
+  [routes {:keys [files not-found]}]
   (reitit/ring-handler (reitit/router routes)
                        (if files
-                         (reitit/routes (make-file-handler files) default-handler)
-                         default-handler)))
+                         (reitit/routes (make-file-handler files) (make-default-handler not-found))
+                         (make-default-handler not-found))))

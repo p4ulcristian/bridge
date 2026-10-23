@@ -95,7 +95,7 @@
                                  :on-sse-open nil :on-sse-close nil
                                  :on-ws-open #(deliver opened %) :on-ws-close #(deliver closed %)})
         routes  (bridge/make-routes-for-messages {} settings options)]
-    (with-server (bridge/make-ring-handler-from-routes routes {:files nil}) settings
+    (with-server (bridge/make-ring-handler-from-routes routes {:files nil :not-found nil}) settings
       (fn [port]
         (let [code   (promise)
               socket (.join (.buildAsync (.newWebSocketBuilder (HttpClient/newHttpClient))

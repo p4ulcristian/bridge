@@ -295,7 +295,8 @@
    :hashed-name-min-hex-digits, how many hex digits before the extension
    make a name hashed (main.3F9A0C1D.js); :hashed-file-cache-seconds, how
    long a hashed file is kept; any other file is asked again each time.
-   A file is served by its exact name only. No route and no file: 404; a
+   A file is served by its exact name only. :not-found, required, nil or
+   (fn [request]): what no route and no file answers (nil: 404, empty); a
    method the route doesn't have: 405."
   [routes options]
   (routes/make-ring-handler-from-routes routes (settings/check-ring-handler-options options)))

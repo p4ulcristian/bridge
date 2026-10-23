@@ -169,12 +169,16 @@
    extension to count as hashed (main.3F9A0C1D.js), a release build's file
    whose name changes with its content;
    :hashed-file-cache-seconds, how long a browser keeps a hashed file
-   without asking again."
+   without asking again.
+   :not-found: nil, a request no route (and no file) matches is answered
+   404 with no body; or (fn [request]) answering it (the app's not-found
+   page)."
   [:map {:closed true}
    [:files [:maybe [:map {:closed true}
                     [:folder :string]
                     [:hashed-name-min-hex-digits [:int {:min 1}]]
-                    [:hashed-file-cache-seconds [:int {:min 0}]]]]]])
+                    [:hashed-file-cache-seconds [:int {:min 0}]]]]]
+   [:not-found [:maybe fn?]]])
 
 (def handler-shape
   "One handler, every key bridge reads required, nil written out where

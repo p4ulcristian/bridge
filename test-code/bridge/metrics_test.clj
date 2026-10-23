@@ -57,7 +57,7 @@
                                                   {:wire wire :log log :meter meter
                                                    :find-rate-limit-key (constantly "one asker")
                                                    :on-sse-open nil :on-sse-close nil :on-ws-open nil :on-ws-close nil})
-        server (bridge/start-server! (bridge/make-ring-handler-from-routes routes {:files nil}) settings {:log log})
+        server (bridge/start-server! (bridge/make-ring-handler-from-routes routes {:files nil :not-found nil}) settings {:log log})
         port   (:port server)]
     (try
       (testing "before any message, only the declarations"

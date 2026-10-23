@@ -89,7 +89,7 @@
          (set (keys (get-in (find-problems #(bridge/make-ring-handler-from-routes [] {:files {:folder "public"}}))
                             [:errors :files]))))
       "with a folder, each of its keys, named")
-  (is (fn? (bridge/make-ring-handler-from-routes [] {:files nil}))))
+  (is (fn? (bridge/make-ring-handler-from-routes [] {:files nil :not-found nil}))))
 
 (deftest every-handler-key-is-written-out
   (let [step                  {:name :answer :enter #(bridge/add-answer-to-context % "hi")}

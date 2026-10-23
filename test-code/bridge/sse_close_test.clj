@@ -41,7 +41,7 @@
                                                      :on-sse-open  #(swap! opened conj %)
                                                      :on-sse-close #(swap! closed conj %)
                                                      :on-ws-open nil :on-ws-close nil})
-        server   (bridge/start-server! (bridge/make-ring-handler-from-routes routes {:files nil}) settings {:log log})]
+        server   (bridge/start-server! (bridge/make-ring-handler-from-routes routes {:files nil :not-found nil}) settings {:log log})]
     {:port (:port server) :server server :meter meter :opened opened :closed closed}))
 
 (defn- open-socket!
