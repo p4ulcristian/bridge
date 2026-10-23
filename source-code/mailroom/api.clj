@@ -119,6 +119,25 @@
   [request client-address-header]
   (limits/find-client-address request client-address-header))
 
+(defn make-rate-limited-ring-handler
+  "A Ring handler for a plain route (not a message), rate-limited like a
+   handler's :rate-limit, by a limiter of its own: one bucket per asker,
+   holding :max and refilled at :max per :per-ms; an asker over it is
+   answered 429 \"Too many requests.\" (text/plain, no-store) and
+   ring-handler isn't called. Kept in this server's memory. Options, every
+   key required, checked first: :rate-limit {:max :per-ms};
+   :find-rate-limit-key, (fn [request]) telling askers apart, such as
+   find-client-address with the settings' :client-address-header;
+   :buckets-before-cleanup, above this many buckets the full ones are
+   dropped.
+
+     (mailroom/make-rate-limited-ring-handler start-visitor-session
+                                              {:rate-limit             {:max 10 :per-ms 60000}
+                                               :find-rate-limit-key    #(mailroom/find-client-address % (:client-address-header settings))
+                                               :buckets-before-cleanup (:rate-limit-buckets-before-cleanup settings)})"
+  [ring-handler options]
+  (limits/make-rate-limited-ring-handler ring-handler (settings/check-rate-limited-options options)))
+
 (defn make-routes-for-messages
   "The three routes, at the settings' :addresses, as reitit data, for
    make-ring-handler-from-routes. Each handler says, every key written out:

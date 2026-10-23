@@ -29,6 +29,7 @@ All but the last seven were made while mailroom was three libraries inside Groun
 - [A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md)
 - [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
 - [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
+- [A plain route is rate-limited by the same buckets, through the api](2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)
 
 ## Replaced
 

@@ -8,6 +8,7 @@
 (deftest the-api-names
   (is (= '#{settings-shape
            find-client-address
+           make-rate-limited-ring-handler
            make-routes-for-messages
            start-server!
            stop-server!

@@ -123,6 +123,19 @@
    [:on-ws-open [:maybe fn?]]
    [:on-ws-close [:maybe fn?]]])
 
+(def rate-limited-options-shape
+  "make-rate-limited-ring-handler's options, every key required.
+   :rate-limit: how often one asker may ask, {:max 10 :per-ms 60000}.
+   :find-rate-limit-key: (fn [request]) telling askers apart, such as
+   find-client-address with the settings' :client-address-header.
+   :buckets-before-cleanup: above this many askers' buckets in memory, the
+   full ones are dropped (the settings' :rate-limit-buckets-before-cleanup,
+   say)."
+  [:map {:closed true}
+   [:rate-limit [:map {:closed true} [:max [:int {:min 1}]] [:per-ms [:int {:min 1}]]]]
+   [:find-rate-limit-key fn?]
+   [:buckets-before-cleanup [:int {:min 1}]]])
+
 (def ring-handler-options-shape
   "make-ring-handler-from-routes's options. :files: nil for none, or where
    the files a GET no route matches is answered from:
@@ -278,6 +291,9 @@
 
 (defn check-routes-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options routes-options-shape options))
+
+(defn check-rate-limited-options [options]
+  (check-data-for-shape "The options" :mailroom/bad-options rate-limited-options-shape options))
 
 (defn check-ring-handler-options [options]
   (check-data-for-shape "The options" :mailroom/bad-options ring-handler-options-shape options))

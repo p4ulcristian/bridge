@@ -9,7 +9,11 @@
    A token bucket per message name and asker: it holds :max, refills at
    :max per :per-ms, and a message takes one. Kept in this server's memory,
    so behind several servers each counts its own; above the settings'
-   :rate-limit-buckets-before-cleanup buckets, the full ones are dropped."
+   :rate-limit-buckets-before-cleanup buckets, the full ones are dropped.
+
+   A plain Ring route (not a message: a POST that sets a cookie, say) is
+   limited the same way by make-rate-limited-ring-handler, its own
+   limiter, one bucket per asker, answered 429 over it."
   (:import
    (java.util.concurrent ConcurrentHashMap)))
 
@@ -43,6 +47,20 @@
                                      (apply [_ _ bucket]
                                        (assoc (take-token (or bucket {:tokens max :at now}) now rate-limit)
                                               :per-ms (:per-ms rate-limit))))))))
+
+(def too-many-requests
+  "A plain route's answer over its rate limit."
+  {:status 429 :headers {"content-type" "text/plain" "cache-control" "no-store"} :body "Too many requests."})
+
+(defn make-rate-limited-ring-handler
+  "ring-handler behind a limiter of its own: an asker over :rate-limit is
+   answered 429 and ring-handler isn't called."
+  [ring-handler {:keys [rate-limit find-rate-limit-key buckets-before-cleanup]}]
+  (let [limiter (make-limiter find-rate-limit-key buckets-before-cleanup)]
+    (fn [request]
+      (if (is-message-allowed? limiter request :route rate-limit)
+        (ring-handler request)
+        too-many-requests))))
 
 (defn find-client-address
   "The asker's address: the request's own, or behind a proxy the header it
