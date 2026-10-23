@@ -105,7 +105,7 @@
     (is (= "Orders" (:title @state)))
     (testing "a move to another page: from the top"
       (swap! state assoc :scroll 420)
-      (bridge/go-to-page! :orders/order {:order-id "7"} {})
+      (bridge/go-to-page! :orders/order {:order-id "7"} {} :push)
       (is (= [:orders/order {} :top] (peek @arrived)))
       (is (= "/orders/7" (get-in @state [:entries (:at @state) :address])))
       (is (= 1 @asked) "asked before leaving"))
@@ -114,9 +114,17 @@
       (is (= [:orders/list {:page 1} [:y 420]] (peek @arrived))))
     (testing "only the query: where it is, and nothing asked"
       (reset! asked 0)
-      (bridge/go-to-page! :orders/list {} {:page 2})
+      (bridge/go-to-page! :orders/list {} {:page 2} :push)
       (is (= [:orders/list {:page 2} :keep] (peek @arrived)))
       (is (= 0 @asked)))
+    (testing ":replace takes the place of the entry shown: no step for Back"
+      (let [entries (count (:entries @state))]
+        (bridge/go-to-page! :orders/list {} {:page 3} :replace)
+        (is (= [:orders/list {:page 3} :keep] (peek @arrived)))
+        (is (= entries (count (:entries @state))))
+        (is (= "/orders?page=3" (get-in @state [:entries (:at @state) :address]))))
+      (is (= :bridge/bad-way (try (bridge/go-to-page! :orders/list {} {} nil) (catch :default e (:type (ex-data e)))))
+          "the way is written out"))
     (testing "a link to a page moves in the app; to an address no page has, it doesn't"
       (is (true? ((get-in @state [:hooks :on-link]) "/orders/8")))
       (is (= :orders/order (first (peek @arrived))))
@@ -125,7 +133,7 @@
       (reset! leave? false)
       (let [before (count @arrived)
             entry  (get-in @state [:entries (:at @state) :address])]
-        (bridge/go-to-page! :orders/list {} {})
+        (bridge/go-to-page! :orders/list {} {} :push)
         (is (= before (count @arrived)))
         (is (= entry (get-in @state [:entries (:at @state) :address])))
         (testing "and Back is put back"

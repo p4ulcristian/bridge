@@ -101,7 +101,7 @@ the app's own route, the REPL's, a test's on a meter of its own
 | both | `refusals` | bridge's own reasons with their data's shapes; every name may be refused with them |
 | browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside bridge's own (`{}` for none), and `:keep-alive?`, true for a request that finishes after the page closes (fetch's keepalive); it never fails for want of an answer: no response, or one that isn't the server's JSON, is `:bridge/no-answer {:http-status n}` under each name |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
-| browser | `start-following-address!` `go-to-page!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `:may-leave?` is asked before leaving a page |
+| browser | `start-following-address!` `go-to-page!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `go-to-page!` says how it goes into the history, `:push` or `:replace`; `:may-leave?` is asked before leaving a page |
 
 Nothing has a default: every value that sets behaviour is written out,
 the settings, every option, every key of a handler, a page and a name's
@@ -221,7 +221,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                                   :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
                                   :may-leave?            #(js/confirm "Leave without saving?")   ; or nil
                                   :languages             nil})   ; or dictionary's functions and the page's language
-(bridge/go-to-page! :orders/page {:order-id 42} {:tab :notes})   ; path params and query, {} for none
+(bridge/go-to-page! :orders/page {:order-id 42} {:tab :notes} :push)   ; path params and query, {} for none; :push or :replace
 ```
 
 ## Tests

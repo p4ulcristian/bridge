@@ -190,19 +190,31 @@
   (let [{:keys [index]} @following]
     (swap! following assoc-in [:positions (str index)] (ask-browser :read-scroll))))
 
+(def ways-of-moving
+  "How a move to an address goes into the history: :push adds an entry,
+   which Back returns from; :replace takes the place of the one shown."
+  #{:push :replace})
+
+(defn- check-way! [way]
+  (when-not (contains? ways-of-moving way)
+    (throw (ex-info (str "A move is :push or :replace, written out, not " (pr-str way))
+                    {:type :bridge/bad-way :way way}))))
+
 (defn move-to-address!
   "Moves to an address, as a link would: true when it leads to a page
    (moved, or kept where it is when :may-leave? said no), false when no
-   page has it (the caller lets the browser load it). replace? doesn't add
-   a step for Back."
-  [address replace?]
+   page has it (the caller lets the browser load it). way: :push adds a
+   step for Back, :replace doesn't (a move to the address shown replaces
+   either way)."
+  [address way]
+  (check-way! way)
   (let [{from :page :keys [index]} @following
         to                         (find-page-at address)]
     (cond
       (nil? to)                  false
       (not (may-leave? from to)) true
       :else
-      (let [replace?   (or replace? (= :none (find-kind-of-move from to)))
+      (let [replace?   (or (= :replace way) (= :none (find-kind-of-move from to)))
             next-index (if replace? index (inc index))]
         (keep-scroll-of-entry!)
         (ask-browser (if replace? :replace-address! :push-address!) address next-index)
@@ -251,7 +263,7 @@
                        :positions        positions
                        :language-of-page (get-in options [:languages :language-of-page])})
     (ask-browser :listen! {:on-pop        follow-pop!
-                           :on-link       #(move-to-address! % false)
+                           :on-link       #(move-to-address! % :push)
                            :on-scroll     keep-scroll-of-entry!
                            :on-leave-page #(ask-browser :keep-positions! (:positions @following))})
     (let [address (ask-browser :read-address)
@@ -269,9 +281,10 @@
 
 (defn go-to-page!
   "Moves to a page by name, as a link would, in the language of the page
-   now shown."
-  [page-name path-params query]
-  (move-to-address! (make-address-of-page page-name path-params query) false))
+   now shown; way :push or :replace (ways-of-moving)."
+  [page-name path-params query way]
+  (check-way! way)
+  (move-to-address! (make-address-of-page page-name path-params query) way))
 
 (defn scroll-as-told!
   "Scrolls as a move told: :top, [:y y], [:element id], or :keep (not at all)."

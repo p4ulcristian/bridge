@@ -145,10 +145,12 @@
 (defn go-to-page!
   "Moves to the page with this name, path params ({} for none) and query
    ({} for none; a nil value leaves its key out), in the language of the
-   page shown, as a link would: Back returns. Another page asks
-   :may-leave? first."
-  [page-name path-params query]
-  (routes/go-to-page! page-name path-params query))
+   page shown, as a link would. way, written out: :push adds a history
+   entry, which Back returns from; :replace takes the place of the entry
+   shown (a picker rewriting the query on every tap). Another page asks
+   :may-leave? first. Any other way throws, :bridge/bad-way."
+  [page-name path-params query way]
+  (routes/go-to-page! page-name path-params query way))
 
 (defn make-address-of-page
   "A page's address, for a link, with its path params and query ({} for
