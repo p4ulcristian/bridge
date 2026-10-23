@@ -1,4 +1,4 @@
-# mailroom
+# bridge
 
 Named messages come in, a handler's steps answer them, the answers go out:
 how a browser and a Clojure server talk. A message is a map of names to
@@ -12,7 +12,7 @@ its shape allows; a rate limit per asker; and the pages in the address bar,
 by name, on both sides.
 
 ```clojure
-io.github.p4ulcristian/mailroom {:git/tag "v0.7.4" :git/sha "4f5c808"}
+io.github.p4ulcristian/bridge {:git/tag "v0.7.4" :git/sha "4f5c808"}
 ```
 
 Needs http-kit, reitit (reitit-ring on the server, reitit-frontend in the
@@ -20,32 +20,32 @@ browser) and [wire](https://github.com/p4ulcristian/wire) (data keeps its
 types across the edge), and on the server
 [logbook](https://github.com/p4ulcristian/logbook) (the app's log, handed
 down) and [meter](https://github.com/p4ulcristian/meter) (the app's
-metrics, handed in). One public namespace, `mailroom.api`: a `.clj` for the server, a
+metrics, handed in). One public namespace, `bridge.api`: a `.clj` for the server, a
 `.cljs` for the browser.
 
 The app makes its wire once, on each side, and hands it in: every function
 that sends or reads a message takes it under `:wire` in its options
 (`make-routes-for-messages`, `answer-message`; in the browser
 `send-message!`, `open-sse-line!`, `open-ws-line!`), and a line keeps the
-one it was opened with. mailroom never makes a wire.
+one it was opened with. bridge never makes a wire.
 
 So with the log, on the server: `make-routes-for-messages` and
 `answer-message` take the app's `(log level event data)` under `:log`,
 `start-server!` in a new options map, `{:log log}`. Each message gets a log
 with a new random `{:request-id "…"}` as its context; every step's context
-holds it at `:mailroom/log`, and the app's wire at `:mailroom/wire`. A step
+holds it at `:bridge/log`, and the app's wire at `:bridge/wire`. A step
 that learns more (who is asking) puts a log with more context back at
-`:mailroom/log` for the steps after it. A handler that throws is written
-there, `:mailroom/handler-failed`; http-kit's own errors and warnings go to
+`:bridge/log` for the steps after it. A handler that throws is written
+there, `:bridge/handler-failed`; http-kit's own errors and warnings go to
 `start-server!`'s log ([why](decisions/2026-10-22-the-app-passes-its-log.md)).
 
 And with the meter: `make-routes-for-messages` takes the app's meter under
-`:meter` and declares mailroom's metrics on it
+`:meter` and declares bridge's metrics on it
 ([why](decisions/2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md)):
-`mailroom_messages_total{name,pipe,outcome}`, each named message answered
+`bridge_messages_total{name,pipe,outcome}`, each named message answered
 on http or ws (`ok`, `invalid`, `refused`, `too-many`, `failed`, `unfit`,
-`no-handler`); `mailroom_answer_seconds{name}`, its time, in the settings'
-`:metric-buckets`; `mailroom_open_lines{pipe}`, the open sse and ws lines.
+`no-handler`); `bridge_answer_seconds{name}`, its time, in the settings'
+`:metric-buckets`; `bridge_open_lines{pipe}`, the open sse and ws lines.
 The names are the handler table's: one no handler has is counted as
 `"other"`. `answer-message` counts nothing.
 
@@ -61,9 +61,9 @@ The names are the handler table's: one no handler has is counted as
 | server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; `{:wire wire :log log}`) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `make-rate-limited-ring-handler` | a plain route (not a message) behind its own limiter, the same buckets, `429` over it ([why](decisions/2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)) |
-| server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:mailroom/answer`) |
-| both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:mailroom/errors` |
-| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside mailroom's own (`{}` for none) |
+| server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:bridge/answer`) |
+| both | `is-error-answer?` | an error answer rather than data: `{:error …}` alone, `{:errors …}` alone, or one carrying `:bridge/errors` |
+| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:wire`, with the options' `:headers` beside bridge's own (`{}` for none) |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given) |
 | browser | `start-following-address!` `go-to-page!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `:may-leave?` is asked before leaving a page |
 
@@ -75,7 +75,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 ```clojure
 (require '[logbook.api :as logbook]
-         '[mailroom.api :as mailroom]
+         '[bridge.api :as bridge]
          '[meter.api :as meter]
          '[wire.api :as wire])
 
@@ -113,13 +113,13 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 (def find-orders-of-shop
   {:name  :find-orders-of-shop
-   :enter (fn [{:mailroom/keys [log message-data] :as context}]   ; log: the message's, with its request id
+   :enter (fn [{:bridge/keys [log message-data] :as context}]   ; log: the message's, with its request id
             (log :debug :orders/finding {:shop/id (:shop/id message-data)})
             (assoc context :orders (find-orders db (:shop/id message-data))))})
 
 (def add-orders-answer
   {:name  :add-orders-answer
-   :enter #(mailroom/add-answer-to-context % (:orders %))})
+   :enter #(bridge/add-answer-to-context % (:orders %))})
 
 (def handlers
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]          ; nil: the data passes as it is
@@ -132,19 +132,19 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
   {:orders/page {:address "/orders/:order-id" :title "Order"}})   ; :title nil: the app sets it
 
 (def server
-  (mailroom/start-server!
-   (mailroom/make-ring-handler-from-routes
-    (into (mailroom/make-routes-for-messages
+  (bridge/start-server!
+   (bridge/make-ring-handler-from-routes
+    (into (bridge/make-routes-for-messages
            handlers settings
            {:wire                wire
             :log                 log            ; the app's (logbook's): each message's steps get one with a request id
-            :meter               meter          ; the app's (meter's): mailroom's metrics are declared on it here
-            :find-rate-limit-key #(mailroom/find-client-address % (:client-address-header settings))
+            :meter               meter          ; the app's (meter's): bridge's metrics are declared on it here
+            :find-rate-limit-key #(bridge/find-client-address % (:client-address-header settings))
             :on-sse-open         remember-line!
             :on-sse-close        forget-line!   ; once a line; a browser gone is seen by the next ping
             :on-ws-open          nil
             :on-ws-close         nil})
-          (mailroom/make-server-routes-for-pages pages page-handler))
+          (bridge/make-server-routes-for-pages pages page-handler))
     {:files {:folder                     "target/public"
              :hashed-name-min-hex-digits 8           ; main.3F9A0C1D.js is hashed
              :hashed-file-cache-seconds  31536000}}) ; and kept a year; any other file: no-cache
@@ -163,21 +163,21 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                     :answer-shape [:vector [:map [:order/id :uuid] [:order/total :decimal]]]}
    :chat/said      {:params-shape nil :answer-shape nil}})
 
-(-> (mailroom/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire :headers {}})
+(-> (bridge/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:wire wire :headers {}})
     (.then (fn [{:orders/keys [of-shop]}] …)))
 
-(mailroom/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
+(bridge/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
                          {:wire               wire
                           :on-open            nil            ; or (fn [again?]), again? after a break: ask what you missed
                           :reconnect-after-ms sse-reconnect-after-ms})
-(mailroom/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
+(bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                         {:wire wire :reopen-after-ms ws-reopen-after-ms})
-(mailroom/start-following-address! pages
-                                   {:on-page               (fn [page scroll] (draw! page) (mailroom/scroll-as-told! scroll))
+(bridge/start-following-address! pages
+                                   {:on-page               (fn [page scroll] (draw! page) (bridge/scroll-as-told! scroll))
                                     :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
                                     :may-leave?            #(js/confirm "Leave without saving?")   ; or nil
                                     :languages             nil})   ; or dictionary's functions and the page's language
-(mailroom/go-to-page! :orders/page {:order-id 42} {:tab :notes})   ; path params and query, {} for none
+(bridge/go-to-page! :orders/page {:order-id 42} {:tab :notes})   ; path params and query, {} for none
 ```
 
 ## Tests

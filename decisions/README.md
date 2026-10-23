@@ -1,8 +1,10 @@
-# mailroom decisions
+# bridge decisions
 
 One file per decision: `YYYY-MM-DD-what-we-decided.md`. The title is the decision. Each file says what we decided, why, and what we chose against. A decision changes by a new file; the old one says so at the top (`Replaced by` or `Changed in part by`), and nothing else in it is rewritten.
 
-All but the last seven were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork now names both the family of libraries this one belongs to and the composer that puts them together; the decisions that stayed with Groundwork are in the composer's `decisions/`.
+bridge was named mailroom until 2026-10-23 ([mailroom is renamed bridge](2026-10-23-mailroom-is-renamed-bridge.md)); the decisions before it keep that name.
+
+All but the last eight were made while mailroom was three libraries inside Groundwork, a Clojure framework (groundwork.server.transport, groundwork.browser.transport and groundwork.server.steps, named groundwork.web and ground-steps before); they name its parts (its settings, its sessions, access and sync, `/groundwork/...` addresses) where they came from. The ones they name that stayed with Groundwork are named by title, in plain text: "Every endpoint declares its answer", "The server puts the browser's settings in the page", "Postgres rings the bell", "The first cut is thirteen libraries". Groundwork now names both the family of libraries this one belongs to and the composer that puts them together; the decisions that stayed with Groundwork are in the composer's `decisions/`.
 
 ## In force
 
@@ -30,6 +32,7 @@ All but the last seven were made while mailroom was three libraries inside Groun
 - [Each message and open line is counted on the app's meter](2026-10-23-messages-and-lines-are-counted-on-the-apps-meter.md), changed in part by [An sse line the browser left is closed by its next ping or send](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
 - [An sse line the browser left is closed by its next ping or send, and its close is run once](2026-10-23-an-sse-line-the-browser-left-is-closed-by-the-next-ping.md)
 - [A plain route is rate-limited by the same buckets, through the api](2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)
+- [mailroom is renamed bridge](2026-10-23-mailroom-is-renamed-bridge.md)
 
 ## Replaced
 
