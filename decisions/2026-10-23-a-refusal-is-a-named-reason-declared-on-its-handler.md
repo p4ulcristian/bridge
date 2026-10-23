@@ -34,3 +34,7 @@
 **Instead of:**
 - **a status on every answer** (`{:answered :ok :data …}`): also correct; every answer carries an envelope the browser's store already adds around it
 - **all reasons in one app table** (Iron Rainbow's `response_reasons.clj`): a handler no longer shows what it can refuse, and the reason is said in a second place
+
+## Sub-decisions
+
+1. **doorman adds its own reasons** (`:doorman/signed-out`, `:doorman/not-found`, `:doorman/not-allowed`) to the `:refusals` of every handler it wraps; the app doesn't write them. doorman is the one that refuses, and one handler where the app forgot them would turn a real "signed out" into `:bridge/failed`. (The user's yes, 2026-10-23.)
