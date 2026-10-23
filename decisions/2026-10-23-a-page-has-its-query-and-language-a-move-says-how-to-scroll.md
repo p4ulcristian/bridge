@@ -1,5 +1,7 @@
 # A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first
 
+> **Changed in part** by parlor's [A move says whether it adds a history entry](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-a-move-says-whether-it-adds-a-history-entry.md) (2026-10-23, built on tidy-up, not released): `go-to-page!` takes the way, `:push` or `:replace`; and by parlor's [The unsaved-changes hold asks with the app's own dialog](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-the-hold-asks-with-the-apps-own-dialog.md) (2026-10-23, built on tidy-up, not released): `:may-leave?` is asked with the move, `(fn [move])`, and `finish-move!` finishes one it held back.
+
 > **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
 
 > The user's decision, 2026-10-23 (house's "routing extras"). Since v0.6.0. Changes in part [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): `start-following-address!` takes options, `go-to-page!` and `make-address-of-page` a query. Carries over Groundwork v0.5.0's `groundwork.browser.routing` (house's tag v0.5.0): the address parsing, the history and the scrolling; the re-frame parts went to parlor.

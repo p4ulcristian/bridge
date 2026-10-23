@@ -1,5 +1,7 @@
 # A message sent over http may carry more headers, written out
 
+> **Added to** by parlor's [Every send writes out its options, its once-key among them](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-every-send-writes-out-its-options-its-once-key-among-them.md) (2026-10-23, built on tidy-up, not released): `send-message!`'s options gain a required `:keep-alive?`, fetch's keepalive.
+
 > **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.
 
 > Since v0.5.0. Changes in part [Every value that sets behaviour is a setting; no hidden defaults](2026-10-22-every-value-that-sets-behaviour-is-a-setting.md): `send-message!`'s options gain `:headers`.
