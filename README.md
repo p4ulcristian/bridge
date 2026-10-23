@@ -58,11 +58,11 @@ The names are the handler table's: one no handler has is counted as
 |---|---|---|
 | server | `settings-shape` | the settings as a malli shape, every key required |
 | server | `make-routes-for-messages` | the three routes, at the settings' addresses, from the handler table, by the options' `:wire`, `:log` and `:meter`; a handler's `:rate-limit` counted per asker |
-| server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none), what no route answers from `:not-found` (nil: 404) |
+| server | `make-server-routes-for-pages` `make-ring-handler-from-routes` | each page answered when opened fresh; the one Ring handler, files from `:files` (nil for none), what no route answers from `:not-found` (nil: 404; [why](decisions/2026-10-23-not-found-is-the-apps.md)) |
 | server | `start-server!` `stop-server!` | Jetty 12, every request on a virtual thread; `{:log log}`; a stop closes the sse lines, lets running requests finish, then cuts |
 | server | `send-message-on-sse-line!` `send-message-on-ws-line!` `is-line-open?` `close-line!` | the server sends on an open line by itself, by the wire the line keeps, or closes it; a line the browser left is closed when its socket ends |
 | server | `answer-message` | a message's answer without a server: tests, the REPL (`:no-rate-limits`, written out; the request nil for a message that came with none), or a message answered off the server's addresses (a limiter from `make-message-limiter`); `{:wire wire :log log}` |
-| server | `make-message-limiter` | a limiter for `answer-message`: each handler's `:rate-limit` counted per asker, by the caller's `:find-rate-limit-key` |
+| server | `make-message-limiter` | a limiter for `answer-message`: each handler's `:rate-limit` counted per asker, by the caller's `:find-rate-limit-key`, in buckets of its own, not the server's ([why](decisions/2026-10-23-a-message-answered-off-the-servers-addresses-is-limited-by-the-callers-limiter.md)) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `make-rate-limited-ring-handler` | a plain route (not a message) behind its own limiter, the same buckets, `429` over it ([why](decisions/2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)) |
 | server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:bridge/answer`) |

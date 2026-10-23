@@ -1,5 +1,7 @@
 # A route is a Ring handler made from steps
 
+> **Changed in part** by [`:not-found` is the app's](2026-10-23-not-found-is-the-apps.md) (2026-10-23, v0.7.7): when no route matches, `make-ring-handler-from-routes` answers by the app's `:not-found`, required; nil is the empty 404.
+
 > **Added to** by [web has http, sse and ws](2026-10-22-web-has-http-sse-and-ws.md) (2026-10-22): routes of kind :sse and :ws, and two more functions to send on a line.
 
 > Builds on [Ring at the edge, steps inside](2026-10-22-ring-at-the-edge-steps-inside.md) and [http-kit serves, reitit routes](2026-10-12-http-kit-and-reitit.md).

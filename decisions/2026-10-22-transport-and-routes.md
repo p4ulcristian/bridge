@@ -1,5 +1,7 @@
 # web becomes transport and routes
 
+> **Changed in part** by [`:not-found` is the app's](2026-10-23-not-found-is-the-apps.md) (2026-10-23, v0.7.7): any other address is answered by the app's `:not-found`, required; nil is the empty 404.
+
 > **Changed in part** by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) (2026-10-22): transport, with its routes and steps, is the library mailroom (`mailroom.api`).
 
 > **Changed in part** by [Named messages over three addresses](2026-10-22-named-messages-over-three-addresses.md) (2026-10-22): data travels as named messages to three addresses Groundwork owns; routes keeps only pages.
