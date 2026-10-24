@@ -25,7 +25,7 @@
 
 (defn- read-answer
   "The answer in a response: shaped, when the server answered 200 with a
-   JSON object; else :groundwork-bridge/no-answer under each name, with the status (a
+   JSON object; else :groundwork-steps/no-answer under each name, with the status (a
    proxy's 502, a 413, a page that isn't JSON)."
   [shaper shapes-by-name message status text]
   (let [data (when (= 200 status)
@@ -39,7 +39,7 @@
   "POSTs {:orders/of-shop {…}} to the address. A promise of the answer,
    {:orders/of-shop …}: shaped data by the shapes, or a refusal, through
    the options' :shaper; it never fails for want of an answer: no response
-   (the network) or one that isn't the server's JSON is :groundwork-bridge/no-answer
+   (the network) or one that isn't the server's JSON is :groundwork-steps/no-answer
    under each name. The shapes and the options are checked first, and a
    name without shapes isn't sent."
   [address shapes-by-name message options]

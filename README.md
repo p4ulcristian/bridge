@@ -6,10 +6,12 @@ data, `{:orders/of-shop {:shop/id 7}}`; the server answers it from one
 handler table, by name, over three pipes: **http** (a POST, answered at
 once), **sse** (the server stream, to the browser) and **ws** (a websocket,
 both ways). A handler's work is its **steps**, a list over one map, the
-context, run until one adds an answer. Each handler may say its shapes, so
-ids, decimals and dates arrive as real types and an answer leaves only as
-its shape allows; a rate limit per asker; and the pages in the address bar,
-by name, on both sides.
+context, run until one adds an answer (the steps, their context's keys and
+the refusal's shape are [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps)'s).
+Each handler may say its shapes, so ids, decimals and dates arrive as real
+types and an answer leaves only as its shape allows; a rate limit per
+asker; and every page answered by the server when it is opened fresh. The
+browser's following of the address bar is groundwork-screens's.
 
 ```clojure
 io.github.p4ulcristian/groundwork-bridge {:git/tag "v0.7.9" :git/sha "8967097"}
@@ -17,7 +19,7 @@ io.github.p4ulcristian/groundwork-bridge {:git/tag "v0.7.9" :git/sha "8967097"}
 
 Needs Jetty 12 through [rj9a](https://github.com/sunng87/ring-jetty9-adapter)
 (no servlet layer; [why](decisions/2026-10-23-the-server-is-jetty-12-through-rj9a.md)),
-reitit (reitit-ring on the server, reitit-frontend in the browser) and [groundwork-shaped-json](https://github.com/p4ulcristian/groundwork-shaped-json) (data keeps its
+reitit-ring (the server's routes), [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps) (a handler's steps and the answer's shape, both sides) and [groundwork-shaped-json](https://github.com/p4ulcristian/groundwork-shaped-json) (data keeps its
 types across the edge), and on the server
 [groundwork-logs](https://github.com/p4ulcristian/groundwork-logs) (the app's log, handed
 down) and [groundwork-metrics](https://github.com/p4ulcristian/groundwork-metrics) (the app's
@@ -34,9 +36,11 @@ So with the log, on the server: `make-routes-for-messages` and
 `answer-message` take the app's `(log level event data)` under `:log`,
 `start-server!` in a new options map, `{:log log}`. Each message gets a log
 with a new random `{:request-id "…"}` as its context; every step's context
-holds it at `:groundwork-bridge/log`, and the app's shaper at `:groundwork-bridge/shaper`. A step
+holds it at `:groundwork-steps/log`, and the app's shaper at `:groundwork-steps/shaper`, beside
+the request, the message's name and its data (`:groundwork-steps/request`,
+`:groundwork-steps/message-name`, `:groundwork-steps/message-data`). A step
 that learns more (who is asking) puts a log with more context back at
-`:groundwork-bridge/log` for the steps after it. A handler that throws is written
+`:groundwork-steps/log` for the steps after it. A handler that throws is written
 there, `:groundwork-bridge/handler-failed`; a failure no step caught goes to
 `start-server!`'s log, `:groundwork-bridge/server-error`
 ([why](decisions/2026-10-22-the-app-passes-its-log.md)). Jetty's own lines go
@@ -50,20 +54,21 @@ declares, with data by the reason's shape
 {:orders/ship {… :refusals {:order/already-shipped [:map [:order/shipped-at :time/instant]]
                             :order/no-address      nil}}}            ; nil: no data; {} for no reasons
 
-(bridge/refuse context :order/already-shipped {:order/shipped-at shipped-at})
+(steps/refuse context :order/already-shipped {:order/shipped-at shipped-at})
 ;; on the groundwork-shaped-json, over http, sse and ws alike, with the message's request id:
-{:orders/ship {:groundwork-bridge/refused :order/already-shipped :groundwork-bridge/data {:order/shipped-at "…"}
-               :groundwork-bridge/request-id "5f0c…"}}
+{:orders/ship {:groundwork-steps/refused :order/already-shipped :groundwork-steps/data {:order/shipped-at "…"}
+               :groundwork-steps/request-id "5f0c…"}}
 ```
 
 The reason is the key of its text in the app's catalogs and its data the
-text's arguments; no English travels. bridge's own reasons are
-`bridge/refusals`: `:groundwork-bridge/too-many {:retry-after-ms n}` (over the
-`:rate-limit`), `:groundwork-bridge/invalid {:errors …}` (params that don't fit),
-`:groundwork-bridge/failed` (a bug: a step threw, no step answered, an answer or a
+text's arguments; no English travels. The reasons every answer may carry
+besides its handler's own are groundwork-steps's `refusals`, which bridge
+gives: `:groundwork-steps/too-many {:retry-after-ms n}` (over the
+`:rate-limit`), `:groundwork-steps/invalid {:errors …}` (params that don't fit),
+`:groundwork-steps/failed` (a bug: a step threw, no step answered, an answer or a
 refusal's data didn't fit its shape, a reason the handler doesn't
-declare, a name no handler has), and in the browser `:groundwork-bridge/no-answer
-{:http-status n}` and `:groundwork-bridge/unfit {:errors …}`. Every refusal is
+declare, a name no handler has), and in the browser `:groundwork-steps/no-answer
+{:http-status n}` and `:groundwork-steps/unfit {:errors …}`. Every refusal is
 written to the message's log, `:info :groundwork-bridge/refused`; every bug with its
 details, `:error` (a name no handler has, `:warn`); either is found by the
 refusal's request id. A POST carrying several names stays 200.
@@ -95,13 +100,8 @@ the app's own route, the REPL's, a test's on a meter of its own
 | server | `make-message-limiter` | a limiter for `answer-message`: each handler's `:rate-limit` counted per asker, by the caller's `:find-rate-limit-key`, in buckets of its own, not the server's ([why](decisions/2026-10-23-a-message-answered-off-the-servers-addresses-is-limited-by-the-callers-limiter.md)) |
 | server | `find-client-address` | the asker's address, behind a proxy too |
 | server | `make-rate-limited-ring-handler` | a plain route (not a message) behind its own limiter, the same buckets, `429` over it ([why](decisions/2026-10-23-a-plain-route-is-rate-limited-by-the-same-buckets.md)) |
-| server | `run-steps-until-answered` `add-answer-to-context` `does-context-have-answer?` | steps: `{:name … :enter (fn [context] context)}` in order, until one answers (`:groundwork-bridge/answer`) |
-| server | `refuse` | a step refuses: a reason its handler's `:refusals` declare, with data by its shape |
-| both | `is-error-answer?` | a refusal rather than data: a map carrying `:groundwork-bridge/refused` |
-| both | `refusals` | bridge's own reasons with their data's shapes; every name may be refused with them |
-| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:shaper`, with the options' `:headers` beside bridge's own (`{}` for none), and `:keep-alive?`, true for a request that finishes after the page closes (fetch's keepalive); it never fails for want of an answer: no response, or one that isn't the server's JSON, is `:groundwork-bridge/no-answer {:http-status n}` under each name |
+| browser | `send-message!` | http: a promise of the answer, shaped, by the options' `:shaper`, with the options' `:headers` beside bridge's own (`{}` for none), and `:keep-alive?`, true for a request that finishes after the page closes (fetch's keepalive); it never fails for want of an answer: no response, or one that isn't the server's JSON, is `:groundwork-steps/no-answer {:http-status n}` under each name |
 | browser | `open-sse-line!` `close-sse-line!` `open-ws-line!` `send-message-on-ws-line!` `close-ws-line!` | sse and ws lines, reopened after a break until closed (sse: after `:reconnect-after-ms`, given, also when the server answered with an HTTP error; ws: after `:reopen-after-ms`, given); an sse line says when it opens (`:on-open`, `again?` after a break) and when it breaks (`:on-break`, once per break), the line's status for an offline banner |
-| browser | `start-following-address!` `go-to-page!` `finish-move!` `make-address-of-page` `scroll-as-told!` | the address bar leads to a page, by name, with its query (read by the page's shape), `#fragment` and language (the app's functions); each move says how to scroll; `go-to-page!` says how it goes into the history, `:push` or `:replace`; `:may-leave?` is asked before leaving a page, with the move; a move it held back the app may finish later with `finish-move!` (its own dialog's Leave: Back and Forward go back for real) |
 
 Nothing has a default: every value that sets behaviour is written out,
 the settings, every option, every key of a handler, a page and a name's
@@ -112,6 +112,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 ```clojure
 (require '[groundwork-logs.api :as logs]
          '[groundwork-bridge.api :as bridge]
+         '[groundwork-steps.api :as steps]
          '[groundwork-metrics.api :as metrics]
          '[groundwork-shaped-json.api :as shaped-json])
 
@@ -151,13 +152,13 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 (def find-orders-of-shop
   {:name  :find-orders-of-shop
-   :enter (fn [{:groundwork-bridge/keys [log message-data] :as context}]   ; log: the message's, with its request id
+   :enter (fn [{:groundwork-steps/keys [log message-data] :as context}]   ; log: the message's, with its request id
             (log :debug :orders/finding {:shop/id (:shop/id message-data)})
             (assoc context :orders (find-orders db (:shop/id message-data))))})
 
 (def add-orders-answer
   {:name  :add-orders-answer
-   :enter #(bridge/add-answer-to-context % (:orders %))})
+   :enter #(steps/add-answer-to-context % (:orders %))})
 
 (def handlers
   {:orders/of-shop {:params-shape [:map [:shop/id :uuid]]          ; nil: the data passes as it is
@@ -192,7 +193,7 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
    {:log log}))                                   ; failures no step caught
 
 ;; the browser, with the same shapes from a .cljc file, both written out for
-;; every name it sends or gets; the addresses, :sse-reconnect-after-ms and
+;; every name it sends or gets (an answer told from a refusal by groundwork-steps); the addresses, :sse-reconnect-after-ms and
 ;; :ws-reopen-after-ms come from the server, in the page; the browser's own shaper
 (def shaper
   (shaped-json/make-shaper-from-settings {:most-shapes-kept 1000
@@ -206,8 +207,8 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
 
 (-> (bridge/send-message! (:http addresses) shapes-by-name {:orders/of-shop {:shop/id shop-id}} {:shaper shaper :headers {} :keep-alive? false})
     (.then (fn [{:orders/keys [of-shop]}]
-             (if (bridge/is-error-answer? of-shop)
-               (show-refusal! (:groundwork-bridge/refused of-shop) (:groundwork-bridge/data of-shop))   ; the reason is the text's key
+             (if (steps/is-error-answer? of-shop)
+               (show-refusal! (:groundwork-steps/refused of-shop) (:groundwork-steps/data of-shop))   ; the reason is the text's key
                (show-orders! of-shop)))))
 
 (bridge/open-sse-line! (:sse addresses) shapes-by-name {:chat/said show-said!}
@@ -217,13 +218,6 @@ fixed, and why: [the decision](decisions/2026-10-22-every-value-that-sets-behavi
                         :reconnect-after-ms sse-reconnect-after-ms})
 (bridge/open-ws-line! (:ws addresses) shapes-by-name {:chat/said show-said!}
                       {:shaper shaper :reopen-after-ms ws-reopen-after-ms})
-(bridge/start-following-address! pages
-                                 {:on-page               (fn [page scroll] (draw! page) (bridge/scroll-as-told! scroll))
-                                  :query-shapes-of-pages {:orders/page [:map [:tab {:optional true} :keyword]]}   ; nil: text
-                                  :may-leave?            (fn [move] (js/confirm "Leave without saving?"))   ; or nil
-                                  ;; or false at once, and the app's dialog's Leave: (bridge/finish-move! move)
-                                  :languages             nil})   ; or groundwork-languages's functions and the page's language
-(bridge/go-to-page! :orders/page {:order-id 42} {:tab :notes} :push)   ; path params and query, {} for none; :push or :replace
 ```
 
 ## Tests

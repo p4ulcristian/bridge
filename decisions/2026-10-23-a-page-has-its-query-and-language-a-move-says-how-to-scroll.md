@@ -1,5 +1,7 @@
 # A page has its query, #fragment and language; a move says how to scroll; leaving another page is asked first
 
+> **Changed in part by** [The steps and the answer's shape are groundwork-steps's, and the browser's routing is groundwork-screens's](2026-10-24-the-steps-and-the-answers-shape-are-groundwork-steps-and-the-browsers-routing-is-groundwork-screens.md) (2026-10-24): following the address bar, moves, `finish-move!`, `make-address-of-page` and the scroll are groundwork-screens's; bridge keeps the server's routes for pages.
+
 > **Changed in part** by parlor's [A move says whether it adds a history entry](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-a-move-says-whether-it-adds-a-history-entry.md) (2026-10-23, built on tidy-up, not released): `go-to-page!` takes the way, `:push` or `:replace`; and by parlor's [The unsaved-changes hold asks with the app's own dialog](https://github.com/p4ulcristian/parlor/blob/tidy-up/decisions/2026-10-23-the-hold-asks-with-the-apps-own-dialog.md) (2026-10-23, built on tidy-up, not released): `:may-leave?` is asked with the move, `(fn [move])`, and `finish-move!` finishes one it held back.
 
 > **Changed in part** by [The family and its composer are groundwork](https://github.com/p4ulcristian/groundwork/blob/Starting-from-the-bottom/decisions/2026-10-23-the-family-and-its-composer-are-groundwork.md) (2026-10-23): manor, the family, and house, the composer, are both named groundwork now.

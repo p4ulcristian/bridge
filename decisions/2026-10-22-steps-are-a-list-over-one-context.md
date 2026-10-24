@@ -1,5 +1,7 @@
 # Steps are a list over one context
 
+> **Changed in part** by [The steps and the answer's shape are groundwork-steps's](2026-10-24-the-steps-and-the-answers-shape-are-groundwork-steps-and-the-browsers-routing-is-groundwork-screens.md) (2026-10-24): the steps, their functions and the context's keys are groundwork-steps's (`groundwork-steps.api`); the answer is at `:groundwork-steps/answer`.
+
 > **Changed in part** by [mailroom is its own library](2026-10-22-mailroom-is-its-own-library.md) (2026-10-22): steps are a handler's steps in mailroom (`mailroom.api`), the name kept; the answer is at `:mailroom/answer`.
 
 > Replaces [Work is a vector of steps over one map](2026-10-22-work-is-a-vector-of-steps-over-one-map.md): no effects, no `:leave` or `:error`, no driver; a `reduce`.

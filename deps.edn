@@ -1,4 +1,5 @@
 ;; bridge: named messages come in, a handler's steps answer them, the answers go out.
+;; The steps, and the shape of an answer, are groundwork-steps's.
 ;; One tree for both languages: source-code/groundwork_bridge/, the server's .clj and the
 ;; browser's .cljs side by side.
 {:paths ["source-code"]
@@ -7,9 +8,11 @@
  {;; the server: Jetty 12 through rj9a (no servlet layer), every request on a
   ;; virtual thread; ws through Ring's websocket protocols, sse a streamed answer
   info.sunng/ring-jetty9-adapter    {:mvn/version "0.40.5"}
-  ;; the routes: reitit on the server, reitit-frontend in the browser (ClojureScript sources)
+  ;; the server's routes: reitit-ring
   metosin/reitit-ring               {:mvn/version "0.11.0"}
-  metosin/reitit-frontend           {:mvn/version "0.11.0"}
+  ;; groundwork-steps: a handler's steps, their context's keys and the refusal's shape,
+  ;; shared with the libraries above (both sides)
+  io.github.p4ulcristian/groundwork-steps       {:git/tag "v0.1.0" :git/sha "ed9458e"}
   ;; groundwork-shaped-json: data that crosses an edge comes back as what it was; the app makes
   ;; the shaper and hands it in
   io.github.p4ulcristian/groundwork-shaped-json       {:git/tag "v0.2.2" :git/sha "1c0fcf9"}

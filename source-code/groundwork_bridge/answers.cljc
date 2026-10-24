@@ -1,11 +1,11 @@
 (ns groundwork-bridge.answers
-  "A refusal: what bridge answers instead of data, one definition for both
-   sides. It is a named reason with its data, and the request id of the
-   message it answers:
+  "A refusal on the wire, both sides. Its shape is groundwork-steps's, a
+   named reason with its data, and the request id of the message it
+   answers:
 
-     {:groundwork-bridge/refused    :order/already-shipped
-      :groundwork-bridge/data       {:order/shipped-at #inst \"…\"}    ; nil for a reason that carries none
-      :groundwork-bridge/request-id \"5f0c…\"}
+     {:groundwork-steps/refused    :order/already-shipped
+      :groundwork-steps/data       {:order/shipped-at #inst \"…\"}    ; nil for a reason that carries none
+      :groundwork-steps/request-id \"5f0c…\"}
 
    A handler declares the reasons its steps may give, each with the shape
    of its data (nil: none), as it declares its answer:
@@ -13,59 +13,32 @@
      {:orders/ship {… :refusals {:order/already-shipped [:map [:order/shipped-at :time/instant]]
                                  :order/no-address      nil}}}
 
-   bridge's own reasons are below, in refusals; a handler never declares
-   them. The reason is the key of its text in the app's catalogs, and its
-   data the text's arguments: no English travels."
+   The reasons every answer may carry besides its handler's own are
+   groundwork-steps's refusals, :groundwork-steps/…, which bridge gives; a
+   handler never declares them. Here: what a shape may not name, a
+   handler's :refusals as a shape, and a refusal's data turned by its
+   reason's shape on its way out and in."
   (:require
    [malli.core :as malli]
    [groundwork-shaped-json.api :as shaped-json]))
 
-(def refusals
-  "bridge's own reasons, each with the shape of its data, nil for none.
-   The server makes the first three, the browser the last two:
-   :groundwork-bridge/too-many   over the handler's :rate-limit: {:retry-after-ms n}, how long until one more is let through
-   :groundwork-bridge/failed     a bug: a step threw, no step answered, an answer or a refusal didn't fit its shape,
-                      a reason the handler doesn't declare, a name no handler has; the details are in the
-                      log, under the refusal's :groundwork-bridge/request-id
-   :groundwork-bridge/invalid    the params didn't fit the :params-shape: {:errors {:shop/id [\"should be an id\"]}}
-   :groundwork-bridge/no-answer  no answer came: the network, or a body that isn't the server's JSON (a proxy's 502,
-                      a 413): {:http-status n}, nil when no response came at all
-   :groundwork-bridge/unfit      the server's answer didn't fit the browser's shapes, or its name has none:
-                      {:errors …}"
-  {:groundwork-bridge/too-many  [:map {:closed true} [:retry-after-ms :int]]
-   :groundwork-bridge/failed    nil
-   :groundwork-bridge/invalid   [:map {:closed true} [:errors :any]]
-   :groundwork-bridge/no-answer [:map {:closed true} [:http-status [:maybe :int]]]
-   :groundwork-bridge/unfit     [:map {:closed true} [:errors :any]]})
-
-(defn make-refusal
-  "The refusal of a reason with its data; the request id is added as it
-   leaves."
-  [reason data]
-  {:groundwork-bridge/refused reason :groundwork-bridge/data data})
-
-(defn is-error-answer?
-  "Whether an answer is a refusal rather than data: a map carrying
-   :groundwork-bridge/refused."
-  [answer]
-  (and (map? answer) (contains? answer :groundwork-bridge/refused)))
-
 (defn does-shape-name-refused?
-  "Whether a shape names :groundwork-bridge/refused anywhere: an :answer-shape may
+  "Whether a shape names :groundwork-steps/refused anywhere: an :answer-shape may
    not, or data could read as a refusal."
   [shape]
-  (boolean (some #{:groundwork-bridge/refused} (tree-seq coll? seq (if (malli/schema? shape) (malli/form shape) shape)))))
+  (boolean (some #{:groundwork-steps/refused} (tree-seq coll? seq (if (malli/schema? shape) (malli/form shape) shape)))))
 
-(defn- has-no-own-reasons? [handler-refusals]
-  (or (not (map? handler-refusals)) (not-any? #(= "groundwork-bridge" (namespace %)) (filter keyword? (keys handler-refusals)))))
+(defn- has-no-shared-reasons? [handler-refusals]
+  (or (not (map? handler-refusals)) (not-any? #(= "groundwork-steps" (namespace %)) (filter keyword? (keys handler-refusals)))))
 
 (def refusals-shape
   "A handler's :refusals: each reason its steps may give, a namespaced
-   keyword, with the shape of its data, nil for none; {} for none. bridge's
-   own reasons are bridge's, never a handler's."
+   keyword, with the shape of its data, nil for none; {} for none. The
+   reasons every answer may carry (groundwork-steps's refusals,
+   :groundwork-steps/…) are never a handler's."
   [:and
    [:map-of :qualified-keyword :any]
-   [:fn {:error/message "bridge's own reasons (:bridge/…) are bridge's: a handler doesn't declare them"} has-no-own-reasons?]])
+   [:fn {:error/message "the reasons every answer may carry (:groundwork-steps/…) are groundwork-steps's: a handler doesn't declare them"} has-no-shared-reasons?]])
 
 (defn turn-refusal-data
   "A refusal's data by its reason's shape, through turn (groundwork-shaped-json's

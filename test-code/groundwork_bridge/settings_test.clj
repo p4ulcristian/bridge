@@ -4,6 +4,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.test-log :as test-log :refer [log]]
    [groundwork-bridge.test-meter :refer [meter with-new-meter with-meter-for-answers]]
    [groundwork-bridge.test-shaper :refer [shaper]]))
@@ -92,7 +93,7 @@
   (is (fn? (bridge/make-ring-handler-from-routes [] {:files nil :not-found nil}))))
 
 (deftest every-handler-key-is-written-out
-  (let [step                  {:name :answer :enter #(bridge/add-answer-to-context % "hi")}
+  (let [step                  {:name :answer :enter #(steps/add-answer-to-context % "hi")}
         {:keys [type errors]} (find-problems #(bridge/make-routes-for-messages {:greetings/hello {:steps [step]}} settings (with-new-meter options)))]
     (is (= :groundwork-bridge/bad-handlers type))
     (is (= #{:params-shape :answer-shape :refusals :rate-limit :run-steps-in} (set (keys (:greetings/hello errors))))

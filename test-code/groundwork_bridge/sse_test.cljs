@@ -116,9 +116,9 @@
   (let [heard (atom [])
         line  (bridge/open-sse-line! "/mail/sse" shapes-by-name {:sync/changed #(swap! heard conj %)}
                                      {:shaper shaper :on-open nil :on-break nil :reconnect-after-ms 20})]
-    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"groundwork-bridge/refused\":\"sync/stopped\",\"groundwork-bridge/data\":null,\"groundwork-bridge/request-id\":\"r\"}}"})
-    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"groundwork-bridge/refused\":\"sync/unknown\",\"groundwork-bridge/data\":null,\"groundwork-bridge/request-id\":\"r\"}}"})
-    (is (= [{:groundwork-bridge/refused :sync/stopped :groundwork-bridge/data nil :groundwork-bridge/request-id "r"} :groundwork-bridge/unfit]
-           [(first @heard) (:groundwork-bridge/refused (second @heard))])
-        "a declared reason as a keyword; one the name doesn't declare, :groundwork-bridge/unfit")
+    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"groundwork-steps/refused\":\"sync/stopped\",\"groundwork-steps/data\":null,\"groundwork-steps/request-id\":\"r\"}}"})
+    ((.-onmessage (first @opened)) #js {:data "{\"sync/changed\":{\"groundwork-steps/refused\":\"sync/unknown\",\"groundwork-steps/data\":null,\"groundwork-steps/request-id\":\"r\"}}"})
+    (is (= [{:groundwork-steps/refused :sync/stopped :groundwork-steps/data nil :groundwork-steps/request-id "r"} :groundwork-steps/unfit]
+           [(first @heard) (:groundwork-steps/refused (second @heard))])
+        "a declared reason as a keyword; one the name doesn't declare, :groundwork-steps/unfit")
     (bridge/close-sse-line! line)))

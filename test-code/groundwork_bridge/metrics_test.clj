@@ -6,6 +6,7 @@
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.test-log :refer [log]]
    [groundwork-bridge.test-meter :refer [make-test-meter find-metric-lines]]
    [groundwork-bridge.test-shaper :refer [shaper]])
@@ -28,12 +29,12 @@
   {:steps steps :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil})
 
 (defn- answer-with [answer]
-  [{:name :answer :enter #(bridge/add-answer-to-context % answer)}])
+  [{:name :answer :enter #(steps/add-answer-to-context % answer)}])
 
 (def ^:private handlers
   {:t/ok       (make-handler (answer-with {:hello "Anna"}))
    :t/invalid  (assoc (make-handler (answer-with {})) :params-shape [:map [:shop/id :uuid]])
-   :t/refused  (assoc (make-handler [{:name :refuse :enter #(bridge/refuse % :t/closed nil)}]) :refusals {:t/closed nil})
+   :t/refused  (assoc (make-handler [{:name :refuse :enter #(steps/refuse % :t/closed nil)}]) :refusals {:t/closed nil})
    :t/too-many (assoc (make-handler (answer-with {})) :rate-limit {:max 1 :per-ms 60000})
    :t/failed   (make-handler [{:name :fail :enter (fn [_] (throw (ex-info "it broke" {})))}])
    :t/unfit    (assoc (make-handler (answer-with {:extra 1})) :answer-shape [:map [:total :int]])})

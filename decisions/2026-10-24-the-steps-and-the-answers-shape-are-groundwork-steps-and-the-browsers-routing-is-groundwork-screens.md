@@ -1,0 +1,18 @@
+# The steps and the answer's shape are groundwork-steps's, and the browser's routing is groundwork-screens's
+
+> The user's decision, 2026-10-24 (groundwork v4.0.0): groundwork-bridge, groundwork-access, groundwork-live-updates and groundwork-screens don't require each other; they share shapes through groundwork-steps, and the composer (groundwork) plugs them together. Changes in part [Steps are a list over one context](2026-10-22-steps-are-a-list-over-one-context.md), [An error answer is told from data by one function](2026-10-23-an-error-answer-is-told-by-one-function.md), [A refusal is a named reason, declared on its handler](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md) and [A page has its query, #fragment and language](2026-10-23-a-page-has-its-query-and-language-a-move-says-how-to-scroll.md).
+
+**Decision:** bridge keeps the wire: named messages over http, sse and ws, the lines, the rate limits, its server, the server's routes for pages. What the libraries above it share moved out:
+
+- to [groundwork-steps](https://github.com/p4ulcristian/groundwork-steps), which bridge now requires: `run-steps-until-answered`, `add-answer-to-context`, `does-context-have-answer?`, `refuse`, `is-error-answer?` and `refusals` leave `groundwork-bridge.api` (both halves), and `groundwork-bridge.steps` is gone. A handler's `:steps` are checked by groundwork-steps's `step-shape`.
+- the context's keys and the refusal's keys are `:groundwork-steps/…`: `request`, `message-name`, `message-data`, `log`, `shaper`, `answer`, `notes` (beside the answers too), `refused`, `data`, `request-id`; and the five reasons that are no handler's own, `too-many`, `failed`, `invalid`, `no-answer`, `unfit`, are `:groundwork-steps/…` (`steps/refusals`). A handler's `:refusals` may not declare them. The same keys are in the JSON: `"groundwork-steps/refused"`.
+- what stays bridge's: a line's keys (`:groundwork-bridge/channel`, `request`, `shaper`, `last-event-id`), the log's events (`:groundwork-bridge/refused`, `handler-failed`, `server-error`, …; their data names the message and the reason by groundwork-steps's keys, `:groundwork-steps/message-name`, `:groundwork-steps/refused`), the metrics, the exceptions' types.
+- to groundwork-screens: the browser's following of the address bar, `start-following-address!`, `go-to-page!`, `finish-move!`, `make-address-of-page`, `scroll-as-told!` (`groundwork-bridge.routes` in the browser, its options' and move's shapes). Pages are drawn by groundwork-screens, so moving between them is its job. reitit-frontend is no longer bridge's dependency.
+
+**Why:** groundwork-access, groundwork-live-updates and groundwork-screens required bridge only for these shapes and for the routing, and so carried the whole wire (Jetty, reitit, its settings) and its releases. With the shapes in a library of their own and the routing where pages are, each library above the wire requires none of its siblings, and the composer is the one place that says which runs which.
+
+**Instead of:**
+- bridge handing the moved functions on, beside groundwork-steps's: two doors to one function, and the siblings could keep requiring bridge
+- the context's keys staying `:groundwork-bridge/…` while their functions move: the shape would still be named after the wire
+- the log's event names moving too: they are bridge's events, written by bridge only
+- the routing staying in bridge's browser half, groundwork-screens handed its functions: the address bar, scrolling and the unsaved-changes question are the screens', and nothing else in the family follows the address bar

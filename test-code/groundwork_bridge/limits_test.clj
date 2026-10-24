@@ -2,6 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.limits :as limits]
    [groundwork-bridge.test-log]
    [groundwork-bridge.test-meter]
@@ -62,13 +63,13 @@
                         [:type :errors])))))
 
 (deftest a-message-answered-off-the-server-is-limited-by-the-callers-limiter
-  (let [handlers {:t/once {:steps [{:name :answer :enter #(bridge/add-answer-to-context % {:ok true})}]
+  (let [handlers {:t/once {:steps [{:name :answer :enter #(steps/add-answer-to-context % {:ok true})}]
                            :params-shape nil :answer-shape nil :refusals {} :rate-limit {:max 1 :per-ms 60000} :run-steps-in nil}}
         limiter  (bridge/make-message-limiter {:find-rate-limit-key #(:token %) :buckets-before-cleanup 100})
         ask      #(bridge/answer-message handlers limiter {:token %} {:t/once {}} (groundwork-bridge.test-meter/with-meter-for-answers {:shaper groundwork-bridge.test-shaper/shaper :log groundwork-bridge.test-log/log}))]
     (is (= {:t/once {:ok true}} (ask "a")))
     (let [{:t/keys [once]} (ask "a")]
-      (is (= [:groundwork-bridge/too-many true] [(:groundwork-bridge/refused once) (< 59000 (get-in once [:groundwork-bridge/data :retry-after-ms]) 60001)])
+      (is (= [:groundwork-steps/too-many true] [(:groundwork-steps/refused once) (< 59000 (get-in once [:groundwork-steps/data :retry-after-ms]) 60001)])
           "the handler's :rate-limit, per asker; refused with how long until the next one is let through"))
     (is (= {:t/once {:ok true}} (ask "b")) "another asker has its own")
     (is (= :groundwork-bridge/bad-options (:type (ex-data (try (bridge/make-message-limiter {}) (catch Exception e e))))))))

@@ -4,13 +4,14 @@
    written out, nil where the data passes as it is, {} for no reasons. A
    message's data goes out as JSON data by its :params-shape; an answer
    comes back as shaped data by its :answer-shape, a refusal with its data
-   by its reason's shape (the name's :refusals, or bridge's own). A name
+   by its reason's shape (the name's :refusals, or groundwork-steps's refusals). A name
    the table doesn't have is a mistake: going out it throws, nothing is
-   sent; coming in it is refused :groundwork-bridge/unfit, as an answer or a refusal
+   sent; coming in it is refused :groundwork-steps/unfit, as an answer or a refusal
    that doesn't fit. groundwork-shaped-json is the app's, which every shape is used by."
   (:require
    [groundwork-bridge.answers :as answers]
-   [groundwork-shaped-json.api :as shaped-json]))
+   [groundwork-shaped-json.api :as shaped-json]
+   [groundwork-steps.api :as steps]))
 
 (defn- turn-each-name [message turn]
   (into {} (map (fn [[message-name data]] [message-name (turn message-name data)])) message))
@@ -35,43 +36,43 @@
                               data))))
 
 (defn- make-unfit
-  "The browser's own refusal of an answer that doesn't fit: :groundwork-bridge/unfit
+  "The browser's own refusal of an answer that doesn't fit: :groundwork-steps/unfit
    with why, and the server's request id when it sent one."
   [errors request-id]
-  (cond-> (answers/make-refusal :groundwork-bridge/unfit {:errors errors})
-    request-id (assoc :groundwork-bridge/request-id request-id)))
+  (cond-> (steps/make-refusal :groundwork-steps/unfit {:errors errors})
+    request-id (assoc :groundwork-steps/request-id request-id)))
 
 (defn- turn-refusal-into-shaped-data
   "A refusal from the server, its reason a keyword again and its data
-   shaped by the reason's shape: the name's :refusals, or bridge's own. A
-   reason neither declares, or data that doesn't fit, :groundwork-bridge/unfit."
-  [shaper name-refusals {reason :groundwork-bridge/refused data :groundwork-bridge/data request-id :groundwork-bridge/request-id}]
+   shaped by the reason's shape: the name's :refusals, or groundwork-steps's refusals. A
+   reason neither declares, or data that doesn't fit, :groundwork-steps/unfit."
+  [shaper name-refusals {reason :groundwork-steps/refused data :groundwork-steps/data request-id :groundwork-steps/request-id}]
   (let [reason   (if (string? reason) (keyword reason) reason)
-        refusals (merge answers/refusals name-refusals)]
+        refusals (merge steps/refusals name-refusals)]
     (if-not (and (keyword? reason) (contains? refusals reason))
       (make-unfit [(str "No refusal named " reason)] request-id)
       (let [turned (answers/turn-refusal-data-in shaper (get refusals reason) data)]
         (if (contains? turned :errors)
           (make-unfit (:errors turned) request-id)
-          (cond-> (answers/make-refusal reason (:data turned))
-            request-id (assoc :groundwork-bridge/request-id request-id)))))))
+          (cond-> (steps/make-refusal reason (:data turned))
+            request-id (assoc :groundwork-steps/request-id request-id)))))))
 
 (defn turn-answer-into-shaped-data
   "Each name's answer as shaped data, by its :answer-shape. A refusal
-   (:groundwork-bridge/refused) is shaped by its reason's shape instead: the server
+   (:groundwork-steps/refused) is shaped by its reason's shape instead: the server
    sends it past the :answer-shape. An answer or a refusal that doesn't
-   fit, or whose name has no shapes, is refused :groundwork-bridge/unfit, with why.
-   :groundwork-bridge/notes, bridge's own, passes as it is."
+   fit, or whose name has no shapes, is refused :groundwork-steps/unfit, with why.
+   :groundwork-steps/notes (groundwork-steps's, beside the answers) passes as it is."
   [shaper shapes answer]
   (turn-each-name answer (fn [message-name data]
                            (cond
-                             (= :groundwork-bridge/notes message-name)
+                             (= :groundwork-steps/notes message-name)
                              data
 
                              (not (contains? shapes message-name))
                              (make-unfit [(str "No shapes named " message-name)] nil)
 
-                             (answers/is-error-answer? data)
+                             (steps/is-error-answer? data)
                              (turn-refusal-into-shaped-data shaper (get-in shapes [message-name :refusals]) data)
 
                              :else
@@ -82,7 +83,7 @@
 
 (defn make-no-answer
   "The answer to a message that got none, the browser's own refusal under
-   each of its names: :groundwork-bridge/no-answer with the HTTP status, nil when no
+   each of its names: :groundwork-steps/no-answer with the HTTP status, nil when no
    response came."
   [message http-status]
-  (update-vals message (fn [_] (answers/make-refusal :groundwork-bridge/no-answer {:http-status http-status}))))
+  (update-vals message (fn [_] (steps/make-refusal :groundwork-steps/no-answer {:http-status http-status}))))

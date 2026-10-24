@@ -6,6 +6,7 @@
    [clojure.java.io :as io]
    [clojure.test :refer [deftest is testing]]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.test-log :refer [log]]
    [groundwork-bridge.test-meter :refer [make-test-meter find-metric-lines]]
    [groundwork-bridge.test-shaper :refer [shaper]])
@@ -24,7 +25,7 @@
    :metric-buckets {:answer-seconds [0.05 1]}})
 
 (def ^:private handlers
-  {:t/ok {:steps        [{:name :answer :enter #(bridge/add-answer-to-context % {})}]
+  {:t/ok {:steps        [{:name :answer :enter #(steps/add-answer-to-context % {})}]
           :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil}})
 
 (defn- start!

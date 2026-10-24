@@ -51,21 +51,26 @@
    the options are checked first, every key written out, nil where nothing
    applies; a missing one refuses, named, with every other problem at once.
 
-   Each message's steps get, beside the request, its name and its data,
-   what every step may use: :groundwork-bridge/log, the app's log with a new random
-   request id as its context ({:request-id \"…\"}), and :groundwork-bridge/shaper,
-   the app's shaper. A step that learns more (who is asking) puts a log with
-   more context back at :groundwork-bridge/log, for the steps after it.
+   A handler's steps are groundwork-steps's, over its context
+   (groundwork-steps.api): each message's steps get, beside the request
+   (:groundwork-steps/request), its name and its data
+   (:groundwork-steps/message-name, :groundwork-steps/message-data), what
+   every step may use: :groundwork-steps/log, the app's log with a new
+   random request id as its context ({:request-id \"…\"}), and
+   :groundwork-steps/shaper, the app's shaper. A step that learns more (who
+   is asking) puts a log with more context back at :groundwork-steps/log,
+   for the steps after it.
 
-   A step answers with data (add-answer-to-context) or refuses with a
-   named reason its handler declares (refuse); every refusal leaves with
-   the message's request id:
+   A step answers with data (groundwork-steps's add-answer-to-context) or
+   refuses with a named reason its handler declares (groundwork-steps's
+   refuse); every refusal leaves with the message's request id:
 
-     {:orders/ship {:groundwork-bridge/refused :order/already-shipped :groundwork-bridge/data {:order/shipped-at \"…\"}
-                    :groundwork-bridge/request-id \"5f0c…\"}}
+     {:orders/ship {:groundwork-steps/refused :order/already-shipped :groundwork-steps/data {:order/shipped-at \"…\"}
+                    :groundwork-steps/request-id \"5f0c…\"}}
 
-   bridge's own reasons (refusals): :groundwork-bridge/too-many, :groundwork-bridge/invalid, and
-   :groundwork-bridge/failed for every bug. A refusal is written to the message's
+   The server's own reasons, of groundwork-steps's refusals:
+   :groundwork-steps/too-many, :groundwork-steps/invalid, and
+   :groundwork-steps/failed for every bug. A refusal is written to the message's
    log, :info :groundwork-bridge/refused; a bug with its details, :error: a step
    that threw, :groundwork-bridge/handler-failed; no step answered,
    :groundwork-bridge/no-step-answered; an answer that doesn't fit its shape,
@@ -95,7 +100,6 @@
    lines): bridge's own for sse, Jetty's websocket session for ws."
   (:require
    [groundwork-logs.api :as logs]
-   [groundwork-bridge.answers :as answers]
    [groundwork-bridge.http :as http]
    [groundwork-bridge.limits :as limits]
    [groundwork-bridge.messages :as messages]
@@ -104,7 +108,6 @@
    [groundwork-bridge.server :as server]
    [groundwork-bridge.settings :as settings]
    [groundwork-bridge.sse :as sse]
-   [groundwork-bridge.steps :as steps]
    [groundwork-bridge.ws :as ws]))
 
 (def settings-shape
@@ -170,10 +173,10 @@
   "The three routes, at the settings' :addresses, as reitit data, for
    make-ring-handler-from-routes. Each handler says, every key written out:
    :steps; :params-shape and :answer-shape (nil: the data passes as it is;
-   an :answer-shape may not name :groundwork-bridge/refused); :refusals, the reasons
+   an :answer-shape may not name :groundwork-steps/refused); :refusals, the reasons
    its steps may refuse with, each with its data's shape (nil: none), {}
-   for none, never bridge's own; :rate-limit, {:max 10 :per-ms 60000} per
-   asker (over it, :groundwork-bridge/too-many), nil for none; :run-steps-in, (fn
+   for none, never one of groundwork-steps's refusals; :rate-limit, {:max 10 :per-ms 60000} per
+   asker (over it, :groundwork-steps/too-many), nil for none; :run-steps-in, (fn
    [run context]), nil for none. Options, each required: :shaper, the app's shaper (groundwork-shaped-json.api's
    make-shaper-from-settings), which every message is read and written by;
    :log, the app's log (groundwork-logs's), which each message's log is made from,
@@ -280,7 +283,7 @@
    :groundwork-bridge/request in each step's context, or nil for a message that came
    with none (a REPL's), whose steps then find no request; a limiter needs
    a request to tell askers apart. Notes, when a handler has them, are
-   beside the answers under :groundwork-bridge/notes. Options, every key required:
+   beside the answers under :groundwork-steps/notes. Options, every key required:
    :shaper, the app's shaper; :log, the app's log, which the message's log is
    made from; :meter, the app's meter (a test's own in a test), which each
    named message is counted into exactly as the server's http address
@@ -302,29 +305,6 @@
   ;; counted as the server's http address counts the same message
   (messages/answer-named-messages (:shaper options) (:log options) handlers limiter
                                   (metrics/make-note-answer (:meter options) :http) request message))
-
-;; -----------------------------------------------------------------------------
-;; Answers
-
-(def refusals
-  "bridge's own reasons, each with the shape of its data (nil: none), the
-   same on both sides; a handler never declares them, and each needs its
-   text in the app's catalogs, as a handler's do. The server's:
-   :groundwork-bridge/too-many {:retry-after-ms n}, over the handler's :rate-limit;
-   :groundwork-bridge/invalid {:errors …}, params that didn't fit; :groundwork-bridge/failed,
-   nil, a bug, its details in the log under the refusal's
-   :groundwork-bridge/request-id. The browser's: :groundwork-bridge/no-answer {:http-status n},
-   no answer came; :groundwork-bridge/unfit {:errors …}, the server's answer didn't
-   fit the browser's shapes."
-  answers/refusals)
-
-(defn is-error-answer?
-  "Whether an answer is a refusal rather than data, the same on both
-   sides: a map carrying :groundwork-bridge/refused, the reason, with :groundwork-bridge/data
-   and the request id, :groundwork-bridge/request-id (none on the browser's own
-   :groundwork-bridge/no-answer). Anything else is data."
-  [answer]
-  (answers/is-error-answer? answer))
 
 ;; -----------------------------------------------------------------------------
 ;; Routes
@@ -349,36 +329,3 @@
    method the route doesn't have: 405."
   [routes options]
   (routes/make-ring-handler-from-routes routes (settings/check-ring-handler-options options)))
-
-;; -----------------------------------------------------------------------------
-;; Steps: a handler's work
-
-(defn run-steps-until-answered
-  "Runs each step's :enter on the context, in order, until one adds an
-   answer. Returns the last context. A step is
-   {:name a-keyword :enter (fn [context] context)}."
-  [steps context]
-  (steps/run-steps-until-answered steps context))
-
-(defn add-answer-to-context
-  "The context with an answer, at :groundwork-bridge/answer; no step after this one
-   runs."
-  [context answer]
-  (steps/add-answer-to-context context answer))
-
-(defn refuse
-  "The context with a refusal for its answer, a reason the handler's
-   :refusals declare with data that fits its shape (nil for a reason of nil
-   shape); no step after this one runs.
-
-     (bridge/refuse context :order/already-shipped {:order/shipped-at shipped-at})
-
-   A reason the handler doesn't declare, or data that doesn't fit, is a bug:
-   written to the log and answered :groundwork-bridge/failed."
-  [context reason data]
-  (steps/add-answer-to-context context (answers/make-refusal reason data)))
-
-(defn does-context-have-answer?
-  "Whether a step has added an answer."
-  [context]
-  (steps/does-context-have-answer? context))

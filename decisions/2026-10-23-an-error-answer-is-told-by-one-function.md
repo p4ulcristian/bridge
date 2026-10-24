@@ -1,5 +1,7 @@
 # An error answer is told from data by one function, the same on both sides
 
+> **Changed in part by** [The steps and the answer's shape are groundwork-steps's](2026-10-24-the-steps-and-the-answers-shape-are-groundwork-steps-and-the-browsers-routing-is-groundwork-screens.md) (2026-10-24): `is-error-answer?` is groundwork-steps's, the key `:groundwork-steps/refused`; bridge no longer hands it on.
+
 > **Changed in part by** [A refusal is a named reason, declared on its handler](2026-10-23-a-refusal-is-a-named-reason-declared-on-its-handler.md) (2026-10-23, built on tidy-up): `is-error-answer?` checks one key, `:bridge/refused`; `{:error …}`, `{:errors …}` and `{:bridge/errors …}` are gone.
 
 > Adds to [Answers are checked, errors stay in the log](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md) and [A handler says its shapes](2026-10-22-a-handler-says-its-shapes.md). Since v0.4.0.

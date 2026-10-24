@@ -5,6 +5,7 @@
    [jsonista.core :as json]
    [groundwork-logs.api :as logs]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.test-log :as test-log :refer [log]]
    [groundwork-bridge.test-meter :refer [meter with-new-meter with-meter-for-answers]]
    [groundwork-bridge.test-shaper :refer [shaper]])
@@ -14,13 +15,13 @@
 
 (def ^:private say-hello
   {:name  :say-hello
-   :enter #(bridge/add-answer-to-context % {:hello (get-in % [:groundwork-bridge/message-data :name])})})
+   :enter #(steps/add-answer-to-context % {:hello (get-in % [:groundwork-steps/message-data :name])})})
 
 (def ^:private answer-shop-total
   {:name  :answer-shop-total
    :enter (fn [context]
-            (let [shop-id (get-in context [:groundwork-bridge/message-data :shop/id])]
-              (bridge/add-answer-to-context context {:shop/id shop-id :total (if (uuid? shop-id) 120.50M 0M)})))})
+            (let [shop-id (get-in context [:groundwork-steps/message-data :shop/id])]
+              (steps/add-answer-to-context context {:shop/id shop-id :total (if (uuid? shop-id) 120.50M 0M)})))})
 
 (def ^:private settings
   {:ip "127.0.0.1" :port 0 :proxy-protocol :disable
@@ -57,8 +58,8 @@
 (defn- without-request-ids
   "The JSON data with each name's request id taken out, and the ids: [data ids]."
   [data]
-  [(update-vals data #(if (map? %) (dissoc % "groundwork-bridge/request-id") %))
-   (keep #(when (map? %) (get % "groundwork-bridge/request-id")) (vals data))])
+  [(update-vals data #(if (map? %) (dissoc % "groundwork-steps/request-id") %))
+   (keep #(when (map? %) (get % "groundwork-steps/request-id")) (vals data))])
 
 (defn- find-handler
   "The Ring handler of one of the three routes: 0 http, 1 sse, 2 ws."
@@ -88,19 +89,19 @@
         (let [[status body] (post-json port "{\"greetings/hello\":{\"name\":\"Anna\"},\"greetings/fail\":{}}")
               [data ids]    (without-request-ids (read-json body))]
           (is (= [200 {"greetings/hello" {"hello" "Anna"}
-                       "greetings/fail"  {"groundwork-bridge/refused" "groundwork-bridge/failed" "groundwork-bridge/data" nil}}]
+                       "greetings/fail"  {"groundwork-steps/refused" "groundwork-steps/failed" "groundwork-steps/data" nil}}]
                  [status data]))
           (is (= 1 (count ids)) "the failure carries the request id; the data doesn't")))
-      (testing "an unknown name: :groundwork-bridge/failed under it"
+      (testing "an unknown name: :groundwork-steps/failed under it"
         (let [[status body] (post-json port "{\"nobody/home\":{}}")]
-          (is (= [200 {"nobody/home" {"groundwork-bridge/refused" "groundwork-bridge/failed" "groundwork-bridge/data" nil}}]
+          (is (= [200 {"nobody/home" {"groundwork-steps/refused" "groundwork-steps/failed" "groundwork-steps/data" nil}}]
                  [status (first (without-request-ids (read-json body)))]))))
       (testing "with shapes: params arrive as real types, the answer leaves as JSON by its shape"
         (is (= [200 "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"120.50\"}}"]
                (post-json port "{\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\"}}"))))
-      (testing "params that don't fit the shape: :groundwork-bridge/invalid, errors by key, no step runs"
+      (testing "params that don't fit the shape: :groundwork-steps/invalid, errors by key, no step runs"
         (let [[status body] (post-json port "{\"shops/total\":{\"shop/id\":\"seven\"}}")]
-          (is (= [200 {"shops/total" {"groundwork-bridge/refused" "groundwork-bridge/invalid" "groundwork-bridge/data" {"errors" {"shop/id" ["should be an id"]}}}}]
+          (is (= [200 {"shops/total" {"groundwork-steps/refused" "groundwork-steps/invalid" "groundwork-steps/data" {"errors" {"shop/id" ["should be an id"]}}}}]
                  [status (first (without-request-ids (read-json body)))]))))
       (testing "not a JSON object: 400"
         (is (= 400 (first (post-json port "[1,2]"))))))))
@@ -168,9 +169,9 @@
                                              :body        (java.io.ByteArrayInputStream. (.getBytes "{\"greetings/hello\":{\"name\":\"Anna\"}}"))})))]
     (is (= "{\"greetings/hello\":{\"hello\":\"Anna\"}}" (ask "1.1.1.1")))
     (let [refusal (get (read-json (ask "1.1.1.1")) "greetings/hello")]
-      (is (= ["groundwork-bridge/too-many" true true]
-             [(get refusal "groundwork-bridge/refused") (< 59000 (get-in refusal ["groundwork-bridge/data" "retry-after-ms"]) 60001)
-              (string? (get refusal "groundwork-bridge/request-id"))])
+      (is (= ["groundwork-steps/too-many" true true]
+             [(get refusal "groundwork-steps/refused") (< 59000 (get-in refusal ["groundwork-steps/data" "retry-after-ms"]) 60001)
+              (string? (get refusal "groundwork-steps/request-id"))])
           "refused, with how long until one more is let through"))
     (is (= "{\"greetings/hello\":{\"hello\":\"Anna\"}}" (ask "2.2.2.2"))
         "another asker behind the same proxy has its own bucket")))
@@ -209,14 +210,14 @@
 
 (def ^:private steps-that-log
   {:greetings/noted  (make-handler [{:name  :note
-                                     :enter (fn [{:groundwork-bridge/keys [log shaper] :as context}]
+                                     :enter (fn [{:groundwork-steps/keys [log shaper] :as context}]
                                               (swap! what-steps-may-use conj (some? shaper))
                                               (log :info :test/step-ran {})
-                                              (bridge/add-answer-to-context context "noted"))}])
+                                              (steps/add-answer-to-context context "noted"))}])
    :greetings/broken (make-handler [{:name  :find-person
-                                     :enter #(update % :groundwork-bridge/log logs/with-context {:person-id person-id})}
+                                     :enter #(update % :groundwork-steps/log logs/with-context {:person-id person-id})}
                                     {:name  :break
-                                     :enter (fn [{:groundwork-bridge/keys [log]}]
+                                     :enter (fn [{:groundwork-steps/keys [log]}]
                                               (log :info :test/about-to-break {})
                                               (throw (ex-info "it broke" {:cause :test})))}])})
 
@@ -224,9 +225,9 @@
   (reset! test-log/lines [])
   (let [ask #(bridge/answer-message steps-that-log :no-rate-limits {} % (with-meter-for-answers {:shaper shaper :log log}))]
     (let [answer (ask {:greetings/noted {} :greetings/broken {}})]
-      (is (= {:greetings/noted "noted" :greetings/broken {:groundwork-bridge/refused :groundwork-bridge/failed :groundwork-bridge/data nil}}
-             (update answer :greetings/broken dissoc :groundwork-bridge/request-id)))
-      (reset! broken-request-id (get-in answer [:greetings/broken :groundwork-bridge/request-id])))
+      (is (= {:greetings/noted "noted" :greetings/broken {:groundwork-steps/refused :groundwork-steps/failed :groundwork-steps/data nil}}
+             (update answer :greetings/broken dissoc :groundwork-steps/request-id)))
+      (reset! broken-request-id (get-in answer [:greetings/broken :groundwork-steps/request-id])))
     (ask {:greetings/noted {}})
     (let [[first-noted second-noted] (test-log/find-lines "test/step-ran")
           [about-to-break]           (test-log/find-lines "test/about-to-break")
@@ -238,7 +239,7 @@
       (is (not= (request-id first-noted) (request-id second-noted)) "the next message has its own")
       (is (= [true true] @what-steps-may-use) "the steps get the app's shaper too")
       (testing "a failure is written to the log the steps had got to"
-        (is (= ["error" (str person-id) {"groundwork-bridge/message-name" "greetings/broken"} "it broke"]
+        (is (= ["error" (str person-id) {"groundwork-steps/message-name" "greetings/broken"} "it broke"]
                [(get failed "level") (get-in failed ["context" "person-id"]) (get failed "data")
                 (get-in failed ["error" "message"])])
             "the person a step added is in the failure's line")))))
@@ -249,7 +250,7 @@
                                                   :enter (fn [context]
                                                            (deliver started true)
                                                            (Thread/sleep 300)
-                                                           (bridge/add-answer-to-context context "done"))}])}
+                                                           (steps/add-answer-to-context context "done"))}])}
         server   (bridge/start-server! (find-handler (bridge/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
                                        (assoc settings :stop-wait-ms 2000 :stop-wait-after-cut-ms 500)
                                        {:log log})
@@ -264,7 +265,7 @@
                                                  :enter (fn [context]
                                                           (deliver started true)
                                                           (Thread/sleep 5000)
-                                                          (bridge/add-answer-to-context context "done"))}])}
+                                                          (steps/add-answer-to-context context "done"))}])}
         server  (bridge/start-server! (find-handler (bridge/make-routes-for-messages slow settings (with-new-meter options)) 0 :post)
                                       (assoc settings :stop-wait-ms 100 :stop-wait-after-cut-ms 1000)
                                       {:log log})
@@ -292,12 +293,8 @@
                                        :nobody/home     {}}
                                       (with-meter-for-answers {:shaper shaper :log log}))]
     (is (= {:greetings/hello false :greetings/fail true :shops/total true :nobody/home true}
-           (update-vals answer bridge/is-error-answer?))
-        "a failure, params that didn't fit, an unknown name: refusals; the greeting: data"))
-  (testing "one key tells them: :groundwork-bridge/refused"
-    (is (true? (bridge/is-error-answer? {:groundwork-bridge/refused :order/no-address :groundwork-bridge/data nil})))
-    (doseq [data [{:error "Not found."} {:errors {}} {:groundwork-bridge/data 1} [] nil "x"]]
-      (is (false? (bridge/is-error-answer? data)) (pr-str data)))))
+           (update-vals answer steps/is-error-answer?))
+        "a failure, params that didn't fit, an unknown name: refusals; the greeting: data")))
 
 ;; -----------------------------------------------------------------------------
 ;; Refusals: a named reason, declared on its handler
@@ -305,7 +302,7 @@
 (def ^:private shipped-at #inst "2026-10-20T08:30:00Z")
 
 (defn- refuse-with [reason data]
-  {:name :refuse :enter #(bridge/refuse % reason data)})
+  {:name :refuse :enter #(steps/refuse % reason data)})
 
 (def ^:private refusing
   {:orders/ship       (assoc (make-handler [(refuse-with :order/already-shipped {:order/shipped-at (.toInstant ^java.util.Date shipped-at)})])
@@ -319,22 +316,22 @@
    :orders/nil-data   (assoc (make-handler [(refuse-with :order/no-address {:street "x"})])
                              :refusals {:order/no-address nil})
    :orders/silent     (make-handler [{:name :nothing :enter identity}])
-   :orders/leaky      (assoc (make-handler [{:name :answer :enter #(bridge/add-answer-to-context % {:order/id 1 :password "x"})}])
+   :orders/leaky      (assoc (make-handler [{:name :answer :enter #(steps/add-answer-to-context % {:order/id 1 :password "x"})}])
                              :answer-shape [:map [:order/id :int]])})
 
 (deftest a-step-refuses-with-a-reason-its-handler-declares
   (reset! test-log/lines [])
   (let [answer (bridge/answer-message refusing :no-rate-limits {} {:orders/ship {} :orders/no-address {}} (with-meter-for-answers {:shaper shaper :log log}))]
-    (is (= {:orders/ship       {:groundwork-bridge/refused :order/already-shipped :groundwork-bridge/data {:order/shipped-at "2026-10-20T08:30:00Z"}}
-            :orders/no-address {:groundwork-bridge/refused :order/no-address :groundwork-bridge/data nil}}
-           (update-vals answer #(dissoc % :groundwork-bridge/request-id)))
+    (is (= {:orders/ship       {:groundwork-steps/refused :order/already-shipped :groundwork-steps/data {:order/shipped-at "2026-10-20T08:30:00Z"}}
+            :orders/no-address {:groundwork-steps/refused :order/no-address :groundwork-steps/data nil}}
+           (update-vals answer #(dissoc % :groundwork-steps/request-id)))
         "its data by its reason's shape, as JSON data; nil for a reason of nil shape")
-    (is (= 1 (count (set (map :groundwork-bridge/request-id (vals answer))))) "every refusal of one message carries its id")
-    (is (re-matches #"[0-9a-f-]{36}" (get-in answer [:orders/ship :groundwork-bridge/request-id])))
+    (is (= 1 (count (set (map :groundwork-steps/request-id (vals answer))))) "every refusal of one message carries its id")
+    (is (re-matches #"[0-9a-f-]{36}" (get-in answer [:orders/ship :groundwork-steps/request-id])))
     (testing "each refusal is in the log, under the same id"
-      (is (= #{["order/already-shipped" (get-in answer [:orders/ship :groundwork-bridge/request-id]) "info"]
-               ["order/no-address" (get-in answer [:orders/ship :groundwork-bridge/request-id]) "info"]}
-             (set (map (juxt #(get-in % ["data" "groundwork-bridge/refused"]) #(get-in % ["context" "request-id"]) #(get % "level"))
+      (is (= #{["order/already-shipped" (get-in answer [:orders/ship :groundwork-steps/request-id]) "info"]
+               ["order/no-address" (get-in answer [:orders/ship :groundwork-steps/request-id]) "info"]}
+             (set (map (juxt #(get-in % ["data" "groundwork-steps/refused"]) #(get-in % ["context" "request-id"]) #(get % "level"))
                        (test-log/find-lines "groundwork-bridge/refused"))))))))
 
 (deftest a-refusal-that-is-a-bug-is-answered-failed-and-logged
@@ -342,22 +339,22 @@
   (let [answer (bridge/answer-message refusing :no-rate-limits {}
                                       {:orders/undeclared {} :orders/unfit {} :orders/nil-data {} :orders/silent {} :orders/leaky {}}
                                       (with-meter-for-answers {:shaper shaper :log log}))]
-    (is (= {:orders/undeclared :groundwork-bridge/failed :orders/unfit :groundwork-bridge/failed :orders/nil-data :groundwork-bridge/failed
-            :orders/silent :groundwork-bridge/failed :orders/leaky :groundwork-bridge/failed}
-           (update-vals answer :groundwork-bridge/refused))
+    (is (= {:orders/undeclared :groundwork-steps/failed :orders/unfit :groundwork-steps/failed :orders/nil-data :groundwork-steps/failed
+            :orders/silent :groundwork-steps/failed :orders/leaky :groundwork-steps/failed}
+           (update-vals answer :groundwork-steps/refused))
         "a reason the handler doesn't declare, data that doesn't fit, data for a reason of none, no step answering, an answer that doesn't fit")
-    (is (every? :groundwork-bridge/request-id (vals answer)))
+    (is (every? :groundwork-steps/request-id (vals answer)))
     (is (= {"groundwork-bridge/undeclared-refusal" ["orders/undeclared"]
             "groundwork-bridge/refusal-unfit"      ["orders/nil-data" "orders/unfit"]
             "groundwork-bridge/no-step-answered"   ["orders/silent"]
             "groundwork-bridge/answer-unfit"       ["orders/leaky"]}
            (update-vals (group-by #(get % "event") (filter #(= "error" (get % "level")) @test-log/lines))
-                        #(vec (sort (map (fn [line] (get-in line ["data" "groundwork-bridge/message-name"])) %)))))
+                        #(vec (sort (map (fn [line] (get-in line ["data" "groundwork-steps/message-name"])) %)))))
         "each written to the log, :error, with its details")))
 
 (deftest refusals-over-http-and-ws-are-the-same
   (let [routes (bridge/make-routes-for-messages refusing settings (with-new-meter options))
-        expect {"orders/no-address" {"groundwork-bridge/refused" "order/no-address" "groundwork-bridge/data" nil}}]
+        expect {"orders/no-address" {"groundwork-steps/refused" "order/no-address" "groundwork-steps/data" nil}}]
     (with-server (find-handler routes 0 :post)
       (fn [port]
         (is (= expect (first (without-request-ids (read-json (second (post-json port "{\"orders/no-address\":{}}")))))))))
@@ -381,17 +378,14 @@
     (testing ":refusals is written out, {} for none"
       (is (= {:t/x {:refusals ["missing required key"]}}
              (:errors (problems {:t/x (dissoc (make-handler []) :refusals)})))))
-    (testing "bridge's own reasons are bridge's"
-      (is (= :groundwork-bridge/bad-handlers (:type (problems {:t/x (assoc (make-handler []) :refusals {:groundwork-bridge/failed nil})})))))
+    (testing "groundwork-steps's reasons are never a handler's"
+      (is (= :groundwork-bridge/bad-handlers (:type (problems {:t/x (assoc (make-handler []) :refusals {:groundwork-steps/failed nil})})))))
     (testing "a reason is a namespaced keyword"
       (is (= :groundwork-bridge/bad-handlers (:type (problems {:t/x (assoc (make-handler []) :refusals {:no-address nil})})))))
-    (testing "an :answer-shape may not name :groundwork-bridge/refused, refused before the start"
-      (is (= {:t/x {:answer-shape ["may not name :groundwork-bridge/refused: a refusal is made by refuse, and declared in :refusals"]}}
-             (:errors (problems {:t/x (assoc (make-handler []) :answer-shape [:map [:groundwork-bridge/refused :keyword]])}))))
+    (testing "an :answer-shape may not name :groundwork-steps/refused, refused before the start"
+      (is (= {:t/x {:answer-shape ["may not name :groundwork-steps/refused: a refusal is made by groundwork-steps's refuse, and declared in :refusals"]}}
+             (:errors (problems {:t/x (assoc (make-handler []) :answer-shape [:map [:groundwork-steps/refused :keyword]])}))))
       (is (= :groundwork-bridge/bad-handlers
-             (:type (try (bridge/make-routes-for-messages {:t/x (assoc (make-handler []) :answer-shape [:map [:groundwork-bridge/refused :keyword]])}
+             (:type (try (bridge/make-routes-for-messages {:t/x (assoc (make-handler []) :answer-shape [:map [:groundwork-steps/refused :keyword]])}
                                                           settings (with-new-meter options))
                          (catch clojure.lang.ExceptionInfo e (ex-data e)))))))))
-
-(deftest bridge-says-its-own-reasons
-  (is (= #{:groundwork-bridge/too-many :groundwork-bridge/failed :groundwork-bridge/invalid :groundwork-bridge/no-answer :groundwork-bridge/unfit} (set (keys bridge/refusals)))))

@@ -2,6 +2,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [groundwork-bridge.api :as bridge]
+   [groundwork-steps.api :as steps]
    [groundwork-bridge.test-log :as test-log :refer [log]]
    [groundwork-bridge.test-meter :refer [meter with-new-meter]]
    [groundwork-bridge.test-shaper :refer [shaper]])
@@ -10,7 +11,7 @@
    (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)))
 
 (def ^:private handlers
-  {:greetings/hello {:steps        [{:name :say-hello :enter #(bridge/add-answer-to-context % "hello")}]
+  {:greetings/hello {:steps        [{:name :say-hello :enter #(steps/add-answer-to-context % "hello")}]
                      :params-shape nil :answer-shape nil :refusals {} :rate-limit nil :run-steps-in nil}})
 
 (def ^:private options

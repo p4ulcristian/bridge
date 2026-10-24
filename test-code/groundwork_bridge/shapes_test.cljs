@@ -8,7 +8,8 @@
    [groundwork-bridge.messages :as messages]
    [groundwork-bridge.shapes :as shapes]
    [groundwork-bridge.test-shaper :refer [shaper]]
-   [groundwork-shaped-json.time]))
+   [groundwork-shaped-json.time]
+   [groundwork-steps.api :as steps]))
 
 (def ^:private shapes-by-name
   {:shops/total     {:params-shape [:map [:shop/id :uuid]]
@@ -41,35 +42,35 @@
   (let [answer (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:shop/id shop-id :total "120.50"}})]
     (is (= {:shops/total {:shop/id shop-id :total "120.50"}} answer)
         "fits its shape; in the browser an id and a decimal are their text (groundwork-shaped-json)"))
-  (testing "an answer that doesn't fit: :groundwork-bridge/unfit, with why"
+  (testing "an answer that doesn't fit: :groundwork-steps/unfit, with why"
     (let [answer (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:shop/id "seven" :total "1"}})]
-      (is (= :groundwork-bridge/unfit (get-in answer [:shops/total :groundwork-bridge/refused])))
-      (is (contains? (get-in answer [:shops/total :groundwork-bridge/data :errors]) :shop/id))))
+      (is (= :groundwork-steps/unfit (get-in answer [:shops/total :groundwork-steps/refused])))
+      (is (contains? (get-in answer [:shops/total :groundwork-steps/data :errors]) :shop/id))))
   (testing "a refusal passes the answer shape: its reason a keyword, its data by its reason's shape"
     (let [{:shops/keys [total]} (shapes/turn-answer-into-shaped-data
                                  shaper shapes-by-name
-                                 {:shops/total {:groundwork-bridge/refused "shop/closed" :groundwork-bridge/data {:shop/opens-at "2026-10-24T08:00:00Z"}
-                                                :groundwork-bridge/request-id "r-1"}})]
-      (is (= [:shop/closed "r-1"] [(:groundwork-bridge/refused total) (:groundwork-bridge/request-id total)]))
-      (is (instance? groundwork-shaped-json.time/Instant (get-in total [:groundwork-bridge/data :shop/opens-at])) "shaped, as data is"))
-    (is (= {:shops/total {:groundwork-bridge/refused :shop/gone :groundwork-bridge/data nil :groundwork-bridge/request-id "r-2"}}
-           (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:groundwork-bridge/refused "shop/gone" :groundwork-bridge/data nil :groundwork-bridge/request-id "r-2"}})))
-    (is (= {:shops/total {:groundwork-bridge/refused :groundwork-bridge/invalid :groundwork-bridge/data {:errors {:shop/id ["should be an id"]}} :groundwork-bridge/request-id "r-3"}}
-           (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:groundwork-bridge/refused "groundwork-bridge/invalid"
-                                                                                   :groundwork-bridge/data {:errors {:shop/id ["should be an id"]}}
-                                                                                   :groundwork-bridge/request-id "r-3"}}))
-        "bridge's own reasons, for every name"))
-  (testing "a reason the name doesn't declare, or data that doesn't fit: :groundwork-bridge/unfit, the server's request id kept"
-    (doseq [refusal [{:groundwork-bridge/refused "shop/burned" :groundwork-bridge/data nil :groundwork-bridge/request-id "r-4"}
-                     {:groundwork-bridge/refused "shop/closed" :groundwork-bridge/data {:shop/opens-at "soon"} :groundwork-bridge/request-id "r-4"}
-                     {:groundwork-bridge/refused "shop/gone" :groundwork-bridge/data {:why "x"} :groundwork-bridge/request-id "r-4"}]]
-      (is (= [:groundwork-bridge/unfit "r-4"]
-             ((juxt :groundwork-bridge/refused :groundwork-bridge/request-id) (:shops/total (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total refusal}))))
+                                 {:shops/total {:groundwork-steps/refused "shop/closed" :groundwork-steps/data {:shop/opens-at "2026-10-24T08:00:00Z"}
+                                                :groundwork-steps/request-id "r-1"}})]
+      (is (= [:shop/closed "r-1"] [(:groundwork-steps/refused total) (:groundwork-steps/request-id total)]))
+      (is (instance? groundwork-shaped-json.time/Instant (get-in total [:groundwork-steps/data :shop/opens-at])) "shaped, as data is"))
+    (is (= {:shops/total {:groundwork-steps/refused :shop/gone :groundwork-steps/data nil :groundwork-steps/request-id "r-2"}}
+           (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:groundwork-steps/refused "shop/gone" :groundwork-steps/data nil :groundwork-steps/request-id "r-2"}})))
+    (is (= {:shops/total {:groundwork-steps/refused :groundwork-steps/invalid :groundwork-steps/data {:errors {:shop/id ["should be an id"]}} :groundwork-steps/request-id "r-3"}}
+           (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:groundwork-steps/refused "groundwork-steps/invalid"
+                                                                                   :groundwork-steps/data {:errors {:shop/id ["should be an id"]}}
+                                                                                   :groundwork-steps/request-id "r-3"}}))
+        "groundwork-steps's reasons, for every name"))
+  (testing "a reason the name doesn't declare, or data that doesn't fit: :groundwork-steps/unfit, the server's request id kept"
+    (doseq [refusal [{:groundwork-steps/refused "shop/burned" :groundwork-steps/data nil :groundwork-steps/request-id "r-4"}
+                     {:groundwork-steps/refused "shop/closed" :groundwork-steps/data {:shop/opens-at "soon"} :groundwork-steps/request-id "r-4"}
+                     {:groundwork-steps/refused "shop/gone" :groundwork-steps/data {:why "x"} :groundwork-steps/request-id "r-4"}]]
+      (is (= [:groundwork-steps/unfit "r-4"]
+             ((juxt :groundwork-steps/refused :groundwork-steps/request-id) (:shops/total (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total refusal}))))
           (pr-str refusal))))
-  (testing "a name the shapes don't have: :groundwork-bridge/unfit; notes pass"
-    (let [answer (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:nobody/home {:a 1} :groundwork-bridge/notes {:x 1}})]
-      (is (= {:groundwork-bridge/refused :groundwork-bridge/unfit :groundwork-bridge/data {:errors ["No shapes named :nobody/home"]}} (:nobody/home answer)))
-      (is (= {:x 1} (:groundwork-bridge/notes answer))))))
+  (testing "a name the shapes don't have: :groundwork-steps/unfit; notes pass"
+    (let [answer (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:nobody/home {:a 1} :groundwork-steps/notes {:x 1}})]
+      (is (= {:groundwork-steps/refused :groundwork-steps/unfit :groundwork-steps/data {:errors ["No shapes named :nobody/home"]}} (:nobody/home answer)))
+      (is (= {:x 1} (:groundwork-steps/notes answer))))))
 
 (deftest a-named-message-finds-its-handler
   (let [heard (atom [])]
@@ -90,10 +91,10 @@
   (let [problems (find-problems #(groundwork-bridge.api/send-message! "/mail/http" {:shops/total {:params-shape nil}} {:shops/total {}} {:shaper shaper}))]
     (is (= :groundwork-bridge/bad-shapes (:type problems)) "refused before anything is sent")
     (is (= #{:answer-shape :refusals} (set (keys (:shops/total (:errors problems)))))))
-  (testing "an answer shape naming :groundwork-bridge/refused, and bridge's own reasons, are refused"
-    (is (= :groundwork-bridge/bad-shapes (:type (find-problems #(groundwork-bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape [:map [:groundwork-bridge/refused :string]] :refusals {}}}
+  (testing "an answer shape naming :groundwork-steps/refused, and groundwork-steps's reasons, are refused"
+    (is (= :groundwork-bridge/bad-shapes (:type (find-problems #(groundwork-bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape [:map [:groundwork-steps/refused :string]] :refusals {}}}
                                                                                {:t/x {}} {:shaper shaper :headers {} :keep-alive? false})))))
-    (is (= :groundwork-bridge/bad-shapes (:type (find-problems #(groundwork-bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape nil :refusals {:groundwork-bridge/failed nil}}}
+    (is (= :groundwork-bridge/bad-shapes (:type (find-problems #(groundwork-bridge.api/send-message! "/mail/http" {:t/x {:params-shape nil :answer-shape nil :refusals {:groundwork-steps/failed nil}}}
                                                                                {:t/x {}} {:shaper shaper :headers {} :keep-alive? false})))))))
 
 (deftest every-line-and-message-takes-the-apps-shaper
@@ -133,15 +134,15 @@
            (:errors (find-problems #(groundwork-bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {}}
                                                               {:shaper shaper :headers {} :keep-alive? nil})))))))
 
-(deftest an-error-answer-is-told-from-data
-  (testing "a refusal: one key, :groundwork-bridge/refused"
-    (doseq [answer [{:groundwork-bridge/refused :shop/gone :groundwork-bridge/data nil :groundwork-bridge/request-id "r"}
-                    {:groundwork-bridge/refused :groundwork-bridge/no-answer :groundwork-bridge/data {:http-status nil}}
+(deftest an-error-answer-is-told-from-data-by-groundwork-steps
+  (testing "a refusal: one key, :groundwork-steps/refused"
+    (doseq [answer [{:groundwork-steps/refused :shop/gone :groundwork-steps/data nil :groundwork-steps/request-id "r"}
+                    {:groundwork-steps/refused :groundwork-steps/no-answer :groundwork-steps/data {:http-status nil}}
                     (:shops/total (shapes/turn-answer-into-shaped-data shaper shapes-by-name {:shops/total {:shop/id "seven" :total "1"}}))]]
-      (is (true? (groundwork-bridge.api/is-error-answer? answer)) (pr-str answer))))
+      (is (true? (steps/is-error-answer? answer)) (pr-str answer))))
   (testing "data, the old error shapes among it"
     (doseq [answer [{:error "Not found."} {:errors {}} {:groundwork-bridge/errors []} [] nil "Not found." 7 {}]]
-      (is (false? (groundwork-bridge.api/is-error-answer? answer)) (pr-str answer)))))
+      (is (false? (steps/is-error-answer? answer)) (pr-str answer)))))
 
 (defn- with-fetch
   "Runs (f) with fetch answered by (answer address options), a promise."
@@ -157,8 +158,8 @@
   (async done
     (let [send!  #(groundwork-bridge.api/send-message! "/mail/http" shapes-by-name {:greetings/hello {} :shops/total {:shop/id shop-id}}
                                             {:shaper shaper :headers {} :keep-alive? false})
-          no     (fn [status] {:greetings/hello {:groundwork-bridge/refused :groundwork-bridge/no-answer :groundwork-bridge/data {:http-status status}}
-                               :shops/total     {:groundwork-bridge/refused :groundwork-bridge/no-answer :groundwork-bridge/data {:http-status status}}})]
+          no     (fn [status] {:greetings/hello {:groundwork-steps/refused :groundwork-steps/no-answer :groundwork-steps/data {:http-status status}}
+                               :shops/total     {:groundwork-steps/refused :groundwork-steps/no-answer :groundwork-steps/data {:http-status status}}})]
       (-> (with-fetch (respond 502 "<html>Bad gateway</html>") send!)
           (.then #(is (= (no 502) %) "a proxy's page: each name, with the status"))
           (.then #(with-fetch (respond 413 "Payload Too Large") send!))
@@ -167,8 +168,8 @@
           (.then #(is (= (no 200) %) "JSON, but not the server's answer"))
           (.then #(with-fetch (fn [_ _] (js/Promise.reject (js/TypeError. "Failed to fetch"))) send!))
           (.then #(is (= (no nil) %) "no response at all: no status"))
-          (.then #(with-fetch (respond 200 "{\"greetings/hello\":{\"groundwork-bridge/refused\":\"groundwork-bridge/too-many\",\"groundwork-bridge/data\":{\"retry-after-ms\":1500},\"groundwork-bridge/request-id\":\"r\"},\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"2\"}}") send!))
-          (.then #(is (= {:greetings/hello {:groundwork-bridge/refused :groundwork-bridge/too-many :groundwork-bridge/data {:retry-after-ms 1500} :groundwork-bridge/request-id "r"}
+          (.then #(with-fetch (respond 200 "{\"greetings/hello\":{\"groundwork-steps/refused\":\"groundwork-steps/too-many\",\"groundwork-steps/data\":{\"retry-after-ms\":1500},\"groundwork-steps/request-id\":\"r\"},\"shops/total\":{\"shop/id\":\"1d000000-0000-4000-8000-000000000001\",\"total\":\"2\"}}") send!))
+          (.then #(is (= {:greetings/hello {:groundwork-steps/refused :groundwork-steps/too-many :groundwork-steps/data {:retry-after-ms 1500} :groundwork-steps/request-id "r"}
                           :shops/total     {:shop/id shop-id :total "2"}}
                          %)
                       "the server's answer: a refusal and data side by side"))

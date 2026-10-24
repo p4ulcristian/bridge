@@ -1,5 +1,7 @@
 # A refusal is a named reason, declared on its handler
 
+> **Changed in part by** [The steps and the answer's shape are groundwork-steps's](2026-10-24-the-steps-and-the-answers-shape-are-groundwork-steps-and-the-browsers-routing-is-groundwork-screens.md) (2026-10-24): `refuse`, the refusal's keys and the reasons that are no handler's own are groundwork-steps's, `:groundwork-steps/refused`, `:groundwork-steps/data`, `:groundwork-steps/request-id`, `:groundwork-steps/too-many` and the rest (`steps/refusals`).
+
 > The user's decision, 2026-10-23, from Iron Rainbow's port (GROUNDWORK-GAPS.md: P12, G10). Changes in part [An error answer is told by one function](2026-10-23-an-error-answer-is-told-by-one-function.md) and [Answers are checked, and errors stay in the log](2026-10-22-answers-are-checked-and-errors-stay-in-the-log.md). Built on tidy-up, not released: bridge, doorman, parlor and dictionary; the composer's part comes later.
 
 **What was wrong:** every refusal was `{:error "text"}` with a fixed English text. Signed out, a dead token and another shop's order all answered "Not found.", so the browser couldn't send a signed-out person to the login, say when to try again, or show a request id.

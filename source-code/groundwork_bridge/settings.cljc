@@ -18,6 +18,7 @@
   (:require
    [groundwork-bridge.answers :as answers]
    #?(:clj [groundwork-bridge.limits :as limits])
+   [groundwork-steps.api :as steps]
    [malli.core :as malli]
    [malli.error :as malli-error]))
 
@@ -190,23 +191,25 @@
 
 (def answer-shape-entry
   "A handler's or a name's :answer-shape: any malli shape, or nil, that
-   doesn't name :groundwork-bridge/refused (data that could read as a refusal)."
-  [:answer-shape [:fn {:error/message "may not name :groundwork-bridge/refused: a refusal is made by refuse, and declared in :refusals"}
+   doesn't name :groundwork-steps/refused (data that could read as a refusal)."
+  [:answer-shape [:fn {:error/message "may not name :groundwork-steps/refused: a refusal is made by groundwork-steps's refuse, and declared in :refusals"}
                   (complement answers/does-shape-name-refused?)]])
 
 (def handler-shape
   "One handler, every key bridge reads required, nil written out where
-   nothing applies. :steps, its work. :params-shape and :answer-shape, the
+   nothing applies. :steps, its work, each a step of groundwork-steps's
+   (step-shape). :params-shape and :answer-shape, the
    malli shapes its data comes in by and its answer leaves by; nil passes
-   it as it is; an :answer-shape may not name :groundwork-bridge/refused.
-   :refusals, the reasons its steps may refuse with (refuse), each with
-   the shape of its data, nil for none, {} for no reasons; bridge's own
-   (groundwork-bridge.answers/refusals) are never declared. :rate-limit, {:max 10
+   it as it is; an :answer-shape may not name :groundwork-steps/refused.
+   :refusals, the reasons its steps may refuse with (groundwork-steps's
+   refuse), each with the shape of its data, nil for none, {} for no
+   reasons; the ones every answer may carry (groundwork-steps's refusals)
+   are never declared. :rate-limit, {:max 10
    :per-ms 60000} per asker, nil for none. :run-steps-in, (fn [run
    context]) the steps run inside (a transaction), nil to run them
    plainly."
   [:map
-   [:steps [:sequential [:map [:name :keyword] [:enter fn?]]]]
+   [:steps [:sequential steps/step-shape]]
    [:params-shape :any]
    answer-shape-entry
    [:refusals answers/refusals-shape]
@@ -297,7 +300,7 @@
    content-type are bridge's own and refused. :keep-alive?: true, the
    request finishes even when the page closes (fetch's keepalive; the
    browser refuses one whose body, with the other keepalive requests in
-   flight, passes 64 KB, which is :groundwork-bridge/no-answer); false, a plain
+   flight, passes 64 KB, which is :groundwork-steps/no-answer); false, a plain
    request."
   [:map {:closed true}
    shaper-entry
@@ -322,44 +325,6 @@
    [:on-open [:maybe fn?]]
    [:on-break [:maybe fn?]]
    [:reconnect-after-ms [:int {:min 1}]]])
-
-(def following-options-shape
-  "start-following-address!'s options, every key required.
-   :on-page: (fn [page scroll]) now and on every move.
-   :query-shapes-of-pages: by page name, every page's and no other: a
-   malli map its query's text values are read by, or nil to keep them text.
-   :may-leave?: (fn [move]) -> whether to move now, asked before a move to
-   another page with the move (move-shape); false keeps the page shown,
-   and the app may finish the move later (finish-move!); nil when nothing
-   is asked.
-   :languages: nil without languages, or the app's functions for the
-   language prefix of an address and the language the page came in:
-   {:split-language-from-path (fn [path]) -> {:language :path},
-    :make-path-in-language (fn [path language]) -> path,
-    :language-of-page \"en\"}."
-  [:map {:closed true}
-   [:on-page fn?]
-   [:query-shapes-of-pages [:map-of :qualified-keyword :any]]
-   [:may-leave? [:maybe fn?]]
-   [:languages [:maybe [:map {:closed true}
-                        [:split-language-from-path fn?]
-                        [:make-path-in-language fn?]
-                        [:language-of-page :string]]]]])
-
-(def move-shape
-  "A move :may-leave? is asked about, which finish-move! finishes, every
-   key written out. :address: where it goes, path, query and #fragment.
-   :way: :push or :replace for a link's or go-to-page!'s move, :history
-   for Back or Forward. :index: for :history, the history entry it goes
-   to (bridge's own number of it); nil for the other two."
-  [:and
-   [:map {:closed true}
-    [:address :string]
-    [:way [:enum :push :replace :history]]
-    [:index [:maybe :int]]]
-   [:fn {:error/message "a :history move names its entry's :index; a :push or :replace one, nil"
-         :error/path    [:index]}
-    (fn [{:keys [way index]}] (= (= :history way) (int? index)))]])
 
 (def ws-options-shape
   "open-ws-line!'s options, every key required. :shaper: the app's shaper; the
@@ -422,26 +387,5 @@
 (defn check-send-options [options]
   (check-data-for-shape "The options" :groundwork-bridge/bad-options send-options-shape options))
 
-(defn check-following-options
-  "The options, and that :query-shapes-of-pages names every page and no
-   other: :groundwork-bridge/bad-options with every problem at once."
-  [pages options]
-  (check-data-for-shape "The options" :groundwork-bridge/bad-options following-options-shape options)
-  (let [declared (set (keys (:query-shapes-of-pages options)))
-        missing  (remove declared (keys pages))
-        extra    (remove (set (keys pages)) declared)]
-    (when (or (seq missing) (seq extra))
-      (throw (ex-info (str "The options have problems: :query-shapes-of-pages names "
-                           (when (seq missing) (str "no query shape for " (vec missing)))
-                           (when (and (seq missing) (seq extra)) " and ")
-                           (when (seq extra) (str "pages there are none of " (vec extra))))
-                      {:type   :groundwork-bridge/bad-options
-                       :errors {:query-shapes-of-pages (vec (concat (map #(str "no query shape for the page " %) missing)
-                                                                    (map #(str "no page " % " in the pages") extra)))}}))))
-  options)
-
 (defn check-ws-options [options]
   (check-data-for-shape "The options" :groundwork-bridge/bad-options ws-options-shape options))
-
-(defn check-move [move]
-  (check-data-for-shape "The move" :groundwork-bridge/bad-move move-shape move))

@@ -17,10 +17,6 @@
            is-line-open?
            close-line!
            answer-message make-message-limiter
-           is-error-answer? refusals
            make-server-routes-for-pages
-           make-ring-handler-from-routes
-           run-steps-until-answered
-           add-answer-to-context refuse
-           does-context-have-answer?}
+           make-ring-handler-from-routes}
          (set (keys (ns-publics 'groundwork-bridge.api))))))
